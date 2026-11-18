@@ -15,13 +15,17 @@
   - Motor NLU determinístico offline en español e inglés + conector opcional **BYOK** (Ollama, `llama.cpp`, OpenAI-compatible) con *fallback* automático sin conexión.
   - Reconocimiento de voz con palabra de activación `"Troko"`, transcripción en vivo bajo la isla y síntesis de voz local con interruptor `"Con voz"`.
 - **Productividad, Hábitos y Herramientas Seguras del Sistema**:
-  - **Inicio y Chat**: resumen diario (hábitos, tareas, próximo aviso, enfoque) e historial conversacional persistente en SQLite WAL.
+  - **Inicio y Chat**: resumen diario (`¿Qué tengo hoy?`), historial conversacional en SQLite WAL y comandos NLU naturales con soporte voseo:
+    - Tareas y avisos: `"Anotame comprar café"`, `"Terminé comprar café"`, `"Recuérdame en 15 minutos llamar a Juan"`, `"Avísame a las 18:30 revisar deploy"`.
+    - Hábitos y notas rápidas: `"Tomé agua"`, `"Nota rápida: idea para el proyecto"`.
+    - Enfoque, sistema y apps: `"Inicia enfoque"`, `"Estado de mi PC"`, `"Abrime el bloc de notas"` (con alias seguros: `notepad`, `chrome`, `calc`, `explorador`, `spotify`).
+    - Tool-calling estructurado con IA local/BYOK (`create_task`, `create_reminder`, `start_focus`, `create_timer`, `log_habit`).
   - **Tareas**: lista de tareas, recordatorios únicos/recurrentes y temporizadores con cuenta regresiva en vivo vía SSE.
   - **Hábitos**: rachas, anillos semanales (`S D L M X J V`) y **15 escenas SVG animadas**.
   - **Enfoque**: temporizador Pomodoro 25/5 con anillo circular SVG, ciclo de 4 bloques y estadísticas de 7 días.
-  - **Correo**: bandeja local de no leídos y redacción de borradores con confirmación explícita antes de enviar.
-  - **Mi Mac**: clasificador de archivos sueltos en 8 categorías con vista previa, confirmación obligatoria, deshacer atómico (`Deshacer`) y lanzador de aplicaciones con lista blanca estricta.
-  - **Ajustes y Electron**: configuración de proveedor IA, permisos locales, exportación/borrado de memoria JSON y *wrapper* opcional de Electron (`electron/`).
+  - **Correo**: bandeja IMAP/SMTP opcional y redacción de borradores con confirmación explícita antes de enviar.
+  - **Mi Mac / Mi Equipo**: clasificador de archivos sueltos en 8 categorías con vista previa, confirmación obligatoria y deshacer atómico (`Deshacer`), lanzador con lista blanca, **Monitor del Sistema** (CPU/RAM/actividad) y **Bloc rápido (Apuntes locales)**.
+  - **Ajustes y Modo Compañero Electron**: proveedor IA local (autodetección de Ollama) o BYOK, selector rápido de Escritorio real vs. Sandbox, permisos de micrófono/notificaciones nativas, atajo global (`Alt+Espacio` en Windows/Linux, `Option+Espacio` en macOS), inicio automático con el sistema, sonido Web Audio y bandeja del sistema (`electron/`).
 
 ---
 
@@ -37,19 +41,24 @@ cd Troko
 npm install
 ```
 
-### 2. Iniciar en modo desarrollo (Backend + Web App)
-```bash
-npm run dev
+### 2. Iniciar en modo desarrollo o Escritorio flotante (Electron)
+En Windows PowerShell:
+```powershell
+git pull origin main
+npm.cmd install
+npm.cmd run build
+npm.cmd run electron:build
+npm.cmd run electron:start
 ```
-O compilar y ejecutar en modo producción en un solo puerto (`http://127.0.0.1:4173`):
+O solo en navegador web (`http://127.0.0.1:4173`):
 ```bash
 npm run build
 PORT=4173 NODE_ENV=production node server/dist/index.js
 ```
-Luego abre **`http://127.0.0.1:4173`** en tu navegador.
+Atajo global en modo Electron: **`Alt + Espacio`** (`Option + Espacio` en macOS) para mostrar/ocultar la isla al instante.
 
 ### 3. Pruebas
 ```bash
-npm test                  # Pruebas unitarias SQLite y servicios (9/9)
+npm test                  # Pruebas unitarias SQLite, servicios y Electron
 npm run typecheck         # Verificación estricta de TypeScript
 ```

@@ -46,6 +46,7 @@ function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | null {
 
 export interface UseVoiceAudioOptions {
   voiceEnabled: boolean;
+  soundEnabled?: boolean;
   wakeWordEnabled: boolean;
   wakeWord: string;
   onListenStart: (transcript?: string) => void;
@@ -58,6 +59,7 @@ export interface UseVoiceAudioOptions {
 
 export function useVoiceAudio({
   voiceEnabled,
+  soundEnabled = true,
   wakeWordEnabled,
   wakeWord,
   onListenStart,
@@ -73,6 +75,8 @@ export function useVoiceAudio({
 
   const voiceEnabledRef = useRef(voiceEnabled);
   voiceEnabledRef.current = voiceEnabled;
+  const soundEnabledRef = useRef(soundEnabled);
+  soundEnabledRef.current = soundEnabled;
   const prevVoiceEnabledRef = useRef(voiceEnabled);
 
   const callbacksRef = useRef({
@@ -270,6 +274,45 @@ export function useVoiceAudio({
     window.speechSynthesis.speak(utterance);
   }, []);
 
+  const playChime = useCallback((kind: 'remind' | 'success' | 'focus' = 'remind') => {
+    if (!soundEnabledRef.current) return;
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const notes =
+        kind === 'success'
+          ? [523.25, 659.25, 783.99]
+          : kind === 'focus'
+          ? [440, 554.37, 659.25]
+          : [587.33, 880];
+
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const start = ctx.currentTime + idx * 0.08;
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.exponentialRampToValueAtTime(0.08, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.23);
+      });
+
+      window.setTimeout(() => {
+        void ctx.close().catch(() => {});
+      }, 650);
+    } catch {
+      // Ignore Web Audio failures in headless browsers
+    }
+  }, []);
+
   return {
     isListening,
     liveTranscript,
@@ -278,5 +321,6 @@ export function useVoiceAudio({
     togglePushToTalk,
     speakText,
     cancelSpeech,
+    playChime,
   };
 }

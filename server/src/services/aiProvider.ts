@@ -21,15 +21,35 @@ export interface AiGenerateOptions {
   systemPrompt?: string;
 }
 
+export interface AiToolAction {
+  type: 'create_task' | 'create_reminder' | 'start_focus' | 'create_timer' | 'log_habit';
+  title?: string;
+  minutes?: number;
+  seconds?: number;
+  habitName?: string;
+}
+
 export interface AiGeneratedReply {
   reply: string;
   emotion?: TrokoMood;
   intent?: string;
+  action?: AiToolAction;
 }
 
 const DEFAULT_OLLAMA_ENDPOINT = 'http://127.0.0.1:11434';
 const DEFAULT_SYSTEM_PROMPT =
-  'Eres Troko, un compañero de escritorio inteligente en español, conciso y amable.';
+  'Eres Troko, un compañero de escritorio inteligente en español, conciso, práctico y amable. ' +
+  'Si el usuario pide explícitamente crear una tarea, recordatorio, temporizador, sesión de enfoque o registrar un hábito, ' +
+  'puedes responder en JSON válido con {"reply":"...","emotion":"contento|animo|orgulloso|festejo|escucha|sorpresa|molesto|bostezo|guino|mareado|saludo|enamorado","action":{"type":"create_task|create_reminder|start_focus|create_timer|log_habit","title":"...","minutes":10,"habitName":"..."}}. ' +
+  'Para conversación normal, responde directamente en español natural.';
+
+const VALID_AI_ACTION_TYPES = new Set([
+  'create_task',
+  'create_reminder',
+  'start_focus',
+  'create_timer',
+  'log_habit',
+]);
 
 export function normalizeEndpoint(endpoint: string): string {
   return endpoint.trim().replace(/\/+$/, '');
@@ -73,6 +93,29 @@ export function tryParseStructuredResponse(rawText: string): AiGeneratedReply {
         }
         if (typeof parsed['intent'] === 'string' && parsed['intent'].trim().length > 0) {
           result.intent = parsed['intent'].trim();
+        }
+        const rawAction = parsed['action'];
+        if (typeof rawAction === 'object' && rawAction !== null && !Array.isArray(rawAction)) {
+          const act = rawAction as Record<string, unknown>;
+          const type = typeof act['type'] === 'string' ? act['type'].trim() : '';
+          if (VALID_AI_ACTION_TYPES.has(type)) {
+            const parsedAction: AiToolAction = {
+              type: type as AiToolAction['type'],
+            };
+            if (typeof act['title'] === 'string' && act['title'].trim()) {
+              parsedAction.title = act['title'].trim();
+            }
+            if (typeof act['habitName'] === 'string' && act['habitName'].trim()) {
+              parsedAction.habitName = act['habitName'].trim();
+            }
+            if (typeof act['minutes'] === 'number' && Number.isFinite(act['minutes']) && act['minutes'] > 0) {
+              parsedAction.minutes = Math.min(480, Math.round(act['minutes']));
+            }
+            if (typeof act['seconds'] === 'number' && Number.isFinite(act['seconds']) && act['seconds'] > 0) {
+              parsedAction.seconds = Math.min(86400, Math.round(act['seconds']));
+            }
+            result.action = parsedAction;
+          }
         }
         return result;
       }

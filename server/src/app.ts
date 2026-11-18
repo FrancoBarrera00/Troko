@@ -16,6 +16,7 @@ import { BridgeService } from './services/bridgeService.ts';
 import { HabitService } from './services/habitService.ts';
 import { MailerService } from './services/mailerService.ts';
 import { NluService } from './services/nluService.ts';
+import { NotesService } from './services/notesService.ts';
 import { OrganizerService } from './services/organizerService.ts';
 import { ProductivityService } from './services/productivityService.ts';
 import { SettingsService } from './services/settingsService.ts';
@@ -198,6 +199,7 @@ export interface ServerContext {
   readonly bridgeService: BridgeService;
   readonly aiProvider: AiProviderService;
   readonly nluService: NluService;
+  readonly notesService: NotesService;
   readonly version: string;
   readonly startedAtMs: number;
   readonly getLooseDesktopFilesCount: () => Promise<number> | number;
@@ -313,11 +315,14 @@ export function createApp(config: AppConfig = {}): TrokoApp {
   );
   const aiProvider = new AiProviderService();
   const bridgeService = new BridgeService();
+  const notesService = new NotesService(dbPath, eventBus);
   const nluService = new NluService({
     db,
     eventBus,
     settingsService,
     productivityService,
+    habitService,
+    notesService,
     mailerService,
     organizerService,
     appLauncherService,
@@ -339,6 +344,7 @@ export function createApp(config: AppConfig = {}): TrokoApp {
     bridgeService,
     aiProvider,
     nluService,
+    notesService,
     version,
     startedAtMs: Date.now(),
     getLooseDesktopFilesCount:

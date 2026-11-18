@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   validateEmailDraftInput,
   validateEmailDraftPatchInput,
@@ -10,7 +13,79 @@ import {
   type ImapSmtpConfig,
 } from '../services/mailTransport.ts';
 
+function detectRealDesktopDir(): string {
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, 'Desktop'),
+    path.join(home, 'Escritorio'),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) {
+      return dir;
+    }
+  }
+  return candidates[0]!;
+}
+
 export function registerOsToolsRoutes(router: Router, ctx: ServerContext): void {
+  // Real OS System Stats & Desktop paths
+  router.get('/api/system/stats', (_req, res) => {
+    const cpus = os.cpus();
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = Math.max(0, totalMem - freeMem);
+    const memUsedPct = totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0;
+    const loadAvg = os.loadavg();
+    const realDesktopDir = detectRealDesktopDir();
+    const currentDesktopDir = ctx.organizerService.resolveTargetDir();
+
+    sendJson(res, 200, {
+      ok: true,
+      hostname: os.hostname(),
+      platform: process.platform,
+      arch: os.arch(),
+      release: os.release(),
+      cpuModel: cpus[0]?.model?.trim() || 'CPU',
+      cpuCores: cpus.length,
+      loadAvg1m: Number((loadAvg[0] ?? 0).toFixed(2)),
+      memTotalBytes: totalMem,
+      memFreeBytes: freeMem,
+      memUsedPct,
+      uptimeSec: Math.floor(os.uptime()),
+      realDesktopDir,
+      currentDesktopDir,
+    });
+  });
+
+  // Quick Scratchpad Notes (/api/notes)
+  router.get('/api/notes', (_req, res) => {
+    sendJson(res, 200, { ok: true, notes: ctx.notesService.listNotes() });
+  });
+
+  router.post('/api/notes', async (req, res) => {
+    const body = await req.readJson<Record<string, unknown>>();
+    const content = typeof body?.['content'] === 'string' ? body['content'] : '';
+    const pinned = Boolean(body?.['pinned']);
+    const note = ctx.notesService.createNote(content, pinned);
+    sendJson(res, 201, { ok: true, note });
+  });
+
+  router.patch('/api/notes/:id', async (req, res) => {
+    const id = req.params['id'] ?? '';
+    const body = await req.readJson<Record<string, unknown>>();
+    const patch: { content?: string; pinned?: boolean } = {};
+    if (typeof body?.['content'] === 'string') patch.content = body['content'];
+    if (typeof body?.['pinned'] === 'boolean') patch.pinned = body['pinned'];
+    const note = ctx.notesService.updateNote(id, patch);
+    sendJson(res, 200, { ok: true, note });
+  });
+
+  router.delete('/api/notes/:id', (req, res) => {
+    const id = req.params['id'] ?? '';
+    ctx.notesService.deleteNote(id);
+    sendJson(res, 200, { ok: true });
+  });
+
   // Desktop Organizer (/api/desktop/*, /api/desktop/tidy/*, /api/os/desktop/*)
   for (const prefix of ['/api/desktop', '/api/os/desktop']) {
     router.get(`${prefix}/scan`, (_req, res) => {

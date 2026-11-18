@@ -10,6 +10,12 @@ export interface ChatTabProps {
 
 const TOOL_LABELS: Record<string, string> = {
   create_task: 'Tarea anotada',
+  complete_task: 'Tarea completada',
+  create_reminder: 'Recordatorio programado',
+  log_habit: 'Hábito registrado',
+  create_note: 'Nota rápida guardada',
+  daily_summary: 'Resumen del día',
+  system_stats: 'Estado del equipo',
   start_focus: 'Sesión de enfoque iniciada',
   create_timer: 'Temporizador iniciado',
   email_draft: 'Borrador de correo creado',

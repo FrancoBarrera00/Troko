@@ -585,6 +585,99 @@ export const apiClient = {
     });
   },
 
+  // System Telemetry & Real Desktop Path
+  getSystemStats(): Promise<{
+    ok: true;
+    hostname: string;
+    platform: string;
+    arch: string;
+    release: string;
+    cpuModel: string;
+    cpuCores: number;
+    loadAvg1m: number;
+    memTotalBytes: number;
+    memFreeBytes: number;
+    memUsedPct: number;
+    uptimeSec: number;
+    realDesktopDir: string;
+    currentDesktopDir: string;
+  }> {
+    return requestJson('/api/system/stats');
+  },
+
+  // Quick Scratchpad Notes
+  async listNotes(): Promise<
+    Array<{
+      id: string;
+      content: string;
+      pinned: boolean;
+      createdAt: string;
+      updatedAt: string;
+    }>
+  > {
+    const res = await requestJson<{
+      ok: true;
+      notes: Array<{
+        id: string;
+        content: string;
+        pinned: boolean;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>('/api/notes');
+    return res.notes ?? [];
+  },
+  async createNote(content: string, pinned = false): Promise<{
+    id: string;
+    content: string;
+    pinned: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    const res = await requestJson<{
+      ok: true;
+      note: {
+        id: string;
+        content: string;
+        pinned: boolean;
+        createdAt: string;
+        updatedAt: string;
+      };
+    }>('/api/notes', {
+      method: 'POST',
+      body: JSON.stringify({ content, pinned }),
+    });
+    return res.note;
+  },
+  async updateNote(
+    id: string,
+    patch: { content?: string; pinned?: boolean }
+  ): Promise<{
+    id: string;
+    content: string;
+    pinned: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    const res = await requestJson<{
+      ok: true;
+      note: {
+        id: string;
+        content: string;
+        pinned: boolean;
+        createdAt: string;
+        updatedAt: string;
+      };
+    }>(`/api/notes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+    return res.note;
+  },
+  async deleteNote(id: string): Promise<void> {
+    await requestJson(`/api/notes/${id}`, { method: 'DELETE' });
+  },
+
   // Memory Export & Wipe
   exportMemory(): Promise<MemoryExportPayload> {
     return requestJson<MemoryExportPayload>('/api/memory/export', {

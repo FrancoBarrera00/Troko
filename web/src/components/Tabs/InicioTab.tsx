@@ -316,6 +316,7 @@ export function InicioTab({
           </button>
           {[
             'Enfócate 25 minutos',
+            '¿Qué tengo hoy?',
             'Ordena mi escritorio',
             'Descansa',
           ].map((chip) => (

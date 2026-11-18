@@ -78,6 +78,7 @@ export function registerAiRoutes(router: Router, ctx: ServerContext): void {
     ctx.settingsService.patchSettings({ voiceEnabled: false });
     ctx.nluService.resetState();
     ctx.appLauncherService.resetState();
+    ctx.notesService.clearNotes();
     ctx.eventBus.setIslandState({
       state: 'idle',
       mood: 'contento',

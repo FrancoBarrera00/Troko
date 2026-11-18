@@ -526,4 +526,48 @@ test.describe('F20: Round 3 Desktop Companion Capabilities', () => {
     );
     expect(quitCalls).toBe(1);
   });
+
+  test('F20-T7: MiEquipoTab shows System Monitor & Quick Notes CRUD, and AjustesTab configures desktopTargetDir', async ({
+    api,
+    page,
+    troko,
+  }) => {
+    await troko.goto({ completeOnboarding: true, api });
+    await troko.openTab('Mi Mac');
+
+    const statsSection = page.getByTestId('system-stats-section');
+    await statsSection.scrollIntoViewIfNeeded();
+    await expect(statsSection).toBeVisible();
+    await expect(page.getByTestId('system-stats-ram')).toContainText(/%/);
+
+    const notesSection = page.getByTestId('quick-notes-section');
+    await notesSection.scrollIntoViewIfNeeded();
+    await expect(notesSection).toBeVisible();
+
+    await page.getByTestId('quick-note-input').fill('Revisar factura del servidor');
+    await page.getByTestId('quick-note-add-btn').click();
+
+    await expect(notesSection).toContainText('Revisar factura del servidor');
+
+    await troko.openTab('Ajustes');
+    const desktopSection = page.getByTestId('settings-section-desktop');
+    await desktopSection.scrollIntoViewIfNeeded();
+    await expect(desktopSection).toBeVisible();
+
+    await page.getByTestId('use-real-desktop-btn').click();
+    await expect(page.getByTestId('ajustes-status-banner')).toContainText(
+      /Usando Escritorio real/i,
+      { timeout: 10_000 },
+    );
+    const afterReal = await api.getSettings();
+    expect(afterReal.desktopTargetDir.length).toBeGreaterThan(0);
+
+    await page.getByTestId('use-sandbox-desktop-btn').click();
+    await expect(page.getByTestId('ajustes-status-banner')).toContainText(
+      /Usando Sandbox seguro/i,
+      { timeout: 10_000 },
+    );
+    const afterSandbox = await api.getSettings();
+    expect(afterSandbox.desktopTargetDir).toBe('');
+  });
 });

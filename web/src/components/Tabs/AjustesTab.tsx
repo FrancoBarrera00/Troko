@@ -1,4 +1,4 @@
-import { Crosshair, Download, Key, Plug, Shield, Trash2 } from 'lucide-react';
+import { Crosshair, Download, Key, Monitor, Plug, Shield, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type {
   AIProviderType,
@@ -71,9 +71,27 @@ export function AjustesTab({
     ok: boolean;
     details: string;
   } | null>(null);
+  const [realDesktopDir, setRealDesktopDir] = useState('');
+  const [desktopHotkey, setDesktopHotkey] = useState(
+    window.trokoElectron?.hotkey ?? 'Alt+Space'
+  );
+  const [openAtLogin, setOpenAtLogin] = useState(false);
 
   useEffect(() => {
     void apiClient.listIntegrations().then(() => onRefreshAll());
+    void apiClient
+      .getSystemStats()
+      .then((stats) => {
+        if (stats.realDesktopDir) setRealDesktopDir(stats.realDesktopDir);
+      })
+      .catch(() => {});
+    void window.trokoElectron
+      ?.getDesktopInfo?.()
+      .then((info) => {
+        setDesktopHotkey(info.hotkey);
+        setOpenAtLogin(info.openAtLogin);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -212,6 +230,47 @@ export function AjustesTab({
       breakMinutes: Math.max(1, Number(breakMinutes) || 5),
     });
     setPrivacyStatus('Ajustes del enfoque guardados.');
+  };
+
+  const handleSaveDesktopDir = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = desktopDir.trim();
+    await onUpdateSettings({ desktopTargetDir: cleaned });
+    setPrivacyStatus(
+      cleaned
+        ? `Carpeta de Escritorio actualizada: ${cleaned}`
+        : 'Carpeta de Escritorio restablecida al Sandbox seguro.'
+    );
+    await onRefreshAll();
+  };
+
+  const handleUseRealDesktop = async () => {
+    const stats = await apiClient.getSystemStats();
+    const target = stats.realDesktopDir || realDesktopDir;
+    if (!target) return;
+    setRealDesktopDir(target);
+    setDesktopDir(target);
+    await onUpdateSettings({ desktopTargetDir: target });
+    setPrivacyStatus(`Usando Escritorio real: ${target}`);
+    await onRefreshAll();
+  };
+
+  const handleUseSandboxDesktop = async () => {
+    setDesktopDir('');
+    await onUpdateSettings({ desktopTargetDir: '' });
+    setPrivacyStatus('Usando Sandbox seguro para organizar archivos.');
+    await onRefreshAll();
+  };
+
+  const handleToggleAutoLaunch = async () => {
+    if (!window.trokoElectron?.setAutoLaunch) return;
+    const next = await window.trokoElectron.setAutoLaunch(!openAtLogin);
+    setOpenAtLogin(next);
+    setPrivacyStatus(
+      next
+        ? 'Troko se iniciará automáticamente con el sistema.'
+        : 'Inicio automático con el sistema desactivado.'
+    );
   };
 
   const getDraftConfigForType = (item: IntegrationRecord): Record<string, unknown> => {
@@ -604,6 +663,117 @@ export function AjustesTab({
           Guardar
         </button>
       </form>
+
+      {/* Desktop Folder & Companion Integration */}
+      <article className="card" data-testid="settings-section-desktop">
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+            <Monitor size={14} color="#58B2FF" />
+            <span>Escritorio y Modo Compañero</span>
+          </div>
+          <span className="sub mono" style={{ fontSize: '11px' }}>
+            Atajo: {desktopHotkey}
+          </span>
+        </div>
+
+        <form
+          onSubmit={(e) => void handleSaveDesktopDir(e)}
+          style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
+        >
+          <label style={{ fontSize: '11px', color: '#8E8E93' }}>
+            Carpeta objetivo para Organizar Escritorio (vacío = Sandbox seguro)
+            <input
+              type="text"
+              value={desktopDir}
+              onChange={(e) => setDesktopDir(e.target.value)}
+              placeholder={realDesktopDir || 'data/desktop-sandbox'}
+              aria-label="Carpeta del escritorio"
+              data-testid="desktop-target-dir-input"
+              className="input mono"
+              style={{ width: '100%', marginTop: '3px', fontSize: '11px' }}
+            />
+          </label>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            <button
+              type="submit"
+              data-testid="save-desktop-dir-btn"
+              className="btn-lime"
+              style={{ fontSize: '11px', padding: '5px 10px' }}
+            >
+              Guardar ruta
+            </button>
+
+            <button
+              type="button"
+              data-testid="use-real-desktop-btn"
+              className="btn-ghost"
+              style={{ fontSize: '11px', padding: '5px 10px' }}
+              onClick={() => void handleUseRealDesktop()}
+            >
+              Usar mi Escritorio real
+            </button>
+
+            <button
+              type="button"
+              data-testid="use-sandbox-desktop-btn"
+              className="btn-ghost"
+              style={{ fontSize: '11px', padding: '5px 10px' }}
+              onClick={() => void handleUseSandboxDesktop()}
+            >
+              Usar Sandbox
+            </button>
+          </div>
+        </form>
+
+        {window.trokoElectron?.isElectron && (
+          <div
+            style={{
+              marginTop: '10px',
+              paddingTop: '10px',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '8px',
+              fontSize: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Iniciar con Windows / Sistema</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={openAtLogin}
+                aria-label="Iniciar con Windows / Sistema"
+                data-testid="electron-autolaunch-toggle"
+                className="switch"
+                onClick={() => void handleToggleAutoLaunch()}
+              >
+                <span className="switch__thumb" />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              data-testid="electron-hide-tray-btn"
+              className="btn-ghost"
+              style={{ fontSize: '11px', padding: '4px 10px' }}
+              onClick={() => window.trokoElectron?.hideWindow()}
+            >
+              Ocultar en bandeja
+            </button>
+          </div>
+        )}
+      </article>
 
       {/* Optional External Integrations */}
       <article className="card" data-testid="integrations-section">

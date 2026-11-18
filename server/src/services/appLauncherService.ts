@@ -60,6 +60,39 @@ export const PLATFORM_APP_COMMANDS: Record<
   },
 };
 
+const APP_ALIASES: Record<string, WhitelistedAppName> = {
+  notepad: 'Notas',
+  'bloc de notas': 'Notas',
+  bloc: 'Notas',
+  notes: 'Notas',
+  apuntes: 'Notas',
+  navegador: 'Safari',
+  browser: 'Safari',
+  edge: 'Safari',
+  msedge: 'Safari',
+  chrome: 'Safari',
+  firefox: 'Safari',
+  agenda: 'Calendario',
+  calendar: 'Calendario',
+  outlookcal: 'Calendario',
+  calc: 'Calculadora',
+  calculator: 'Calculadora',
+  musica: 'Música',
+  music: 'Música',
+  spotify: 'Música',
+  reproductor: 'Música',
+  mail: 'Correo',
+  email: 'Correo',
+  outlook: 'Correo',
+  thunderbird: 'Correo',
+  explorador: 'Finder',
+  explorer: 'Finder',
+  archivos: 'Finder',
+  carpetas: 'Finder',
+  carpeta: 'Finder',
+  files: 'Finder',
+};
+
 function normalizeText(s: string): string {
   return s
     .normalize('NFD')
@@ -98,7 +131,7 @@ export class AppLauncherService {
         return candidate;
       }
     }
-    return null;
+    return APP_ALIASES[targetNorm] ?? null;
   }
 
   launchApp(rawInput: unknown): {

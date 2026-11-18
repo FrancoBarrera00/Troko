@@ -14,6 +14,23 @@ export const TROKO_IPC_CHANNELS = {
   QUIT: 'troko:quit',
 } as const;
 
+export const TROKO_DESKTOP_IPC_CHANNELS = {
+  GET_DESKTOP_INFO: 'troko:get-desktop-info',
+  SET_AUTO_LAUNCH: 'troko:set-auto-launch',
+  NOTIFY: 'troko:notify',
+  OPEN_EXTERNAL: 'troko:open-external',
+  SUMMONED: 'troko:summoned',
+} as const;
+
+export function isSafeExternalUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export interface ElectronWindowOptions {
   width: number;
   height: number;
@@ -189,11 +206,16 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
     Menu,
     nativeImage,
     shell,
+    globalShortcut,
+    session,
+    Notification,
   } = electronModule as {
     app: {
       requestSingleInstanceLock: () => boolean;
       getPath: (name: string) => string;
       getAppPath: () => string;
+      getLoginItemSettings?: () => { openAtLogin: boolean };
+      setLoginItemSettings?: (settings: { openAtLogin: boolean }) => void;
       whenReady: () => Promise<void>;
       on: (event: string, listener: (...args: unknown[]) => void) => void;
       quit: () => void;
@@ -212,12 +234,19 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
       hide: () => void;
       focus: () => void;
       on: (event: string, listener: () => void) => void;
+      webContents?: {
+        send: (channel: string, ...args: unknown[]) => void;
+      };
     };
     screen: {
       getPrimaryDisplay: () => { workAreaSize: { width: number; height: number } };
     };
     ipcMain: {
       on: (channel: string, listener: (_event: unknown, ...args: unknown[]) => void) => void;
+      handle?: (
+        channel: string,
+        listener: (_event: unknown, ...args: unknown[]) => unknown
+      ) => void;
     };
     Tray: new (image: unknown) => {
       setToolTip: (tip: string) => void;
@@ -228,7 +257,7 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
     Menu: {
       buildFromTemplate: (
         template: Array<
-          | { label: string; click: () => void }
+          | { label: string; click: () => void; type?: 'checkbox'; checked?: boolean }
           | { type: 'separator' }
         >
       ) => unknown;
@@ -239,6 +268,32 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
     };
     shell: {
       openExternal: (url: string) => Promise<void>;
+    };
+    globalShortcut?: {
+      register: (accelerator: string, callback: () => void) => boolean;
+      unregisterAll: () => void;
+    };
+    session?: {
+      defaultSession?: {
+        setPermissionRequestHandler?: (
+          handler: (
+            webContents: { getURL?: () => string },
+            permission: string,
+            callback: (granted: boolean) => void
+          ) => void
+        ) => void;
+        setPermissionCheckHandler?: (
+          handler: (
+            webContents: { getURL?: () => string } | null,
+            permission: string,
+            requestingOrigin: string
+          ) => boolean
+        ) => void;
+      };
+    };
+    Notification?: {
+      isSupported?: () => boolean;
+      new (options: { title: string; body: string; icon?: unknown }): { show: () => void };
     };
   };
 
@@ -263,6 +318,26 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
   }
 
   await waitForHealth(resolvedServerUrl);
+
+  // Grant microphone/media and notification permissions only for Troko's own local origin
+  const trokoOrigin = (() => {
+    try {
+      return new URL(resolvedServerUrl).origin;
+    } catch {
+      return resolvedServerUrl;
+    }
+  })();
+
+  const allowedPermissions = new Set(['media', 'audioCapture', 'notifications']);
+  session?.defaultSession?.setPermissionCheckHandler?.((_wc, permission, origin) => {
+    if (!allowedPermissions.has(permission)) return false;
+    return !origin || origin.startsWith(trokoOrigin);
+  });
+  session?.defaultSession?.setPermissionRequestHandler?.((wc, permission, callback) => {
+    const reqUrl = wc?.getURL?.() ?? '';
+    const sameOrigin = !reqUrl || reqUrl.startsWith(trokoOrigin);
+    callback(sameOrigin && allowedPermissions.has(permission));
+  });
 
   const preloadPath = resolveFirstExisting([
     path.resolve(currentDir, 'preload.cjs'),
@@ -291,8 +366,32 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
     } else {
       win.show();
       win.focus();
+      win.webContents?.send(TROKO_DESKTOP_IPC_CHANNELS.SUMMONED);
     }
   };
+
+  const summonWindow = (): void => {
+    if (win.isDestroyed()) return;
+    if (!win.isVisible()) {
+      win.show();
+    }
+    win.focus();
+    win.webContents?.send(TROKO_DESKTOP_IPC_CHANNELS.SUMMONED);
+  };
+
+  let registeredHotkey = process.platform === 'darwin' ? 'Option+Space' : 'Alt+Space';
+  try {
+    const primaryOk = globalShortcut?.register(registeredHotkey, toggleWindowVisibility) ?? false;
+    if (!primaryOk) {
+      const fallback = 'CommandOrControl+Shift+T';
+      const fallbackOk = globalShortcut?.register(fallback, toggleWindowVisibility) ?? false;
+      if (fallbackOk) {
+        registeredHotkey = fallback;
+      }
+    }
+  } catch {
+    // Ignore globalShortcut errors in headless environments
+  }
 
   let tray: InstanceType<typeof Tray> | null = null;
   const trayIconPath = resolveFirstExisting([
@@ -308,6 +407,11 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
   const shutdownAndQuit = async (): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
+    try {
+      globalShortcut?.unregisterAll();
+    } catch {
+      // ignore
+    }
     tray?.destroy();
     tray = null;
     if (backendHandle) {
@@ -317,36 +421,66 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
     app.quit();
   };
 
+  const getOpenAtLogin = (): boolean => {
+    try {
+      return Boolean(app.getLoginItemSettings?.().openAtLogin);
+    } catch {
+      return false;
+    }
+  };
+
+  const setOpenAtLogin = (enabled: boolean): boolean => {
+    try {
+      app.setLoginItemSettings?.({ openAtLogin: Boolean(enabled) });
+      return getOpenAtLogin();
+    } catch {
+      return false;
+    }
+  };
+
+  const rebuildTrayMenu = (): void => {
+    if (!tray) return;
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        {
+          label: `Mostrar/Ocultar Troko (${registeredHotkey})`,
+          click: toggleWindowVisibility,
+        },
+        {
+          label: 'Abrir en navegador',
+          click: () => {
+            if (isSafeExternalUrl(resolvedServerUrl)) {
+              void shell.openExternal(resolvedServerUrl);
+            }
+          },
+        },
+        {
+          label: 'Iniciar con el sistema',
+          type: 'checkbox',
+          checked: getOpenAtLogin(),
+          click: () => {
+            setOpenAtLogin(!getOpenAtLogin());
+            rebuildTrayMenu();
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Salir de Troko',
+          click: () => {
+            void shutdownAndQuit();
+          },
+        },
+      ])
+    );
+  };
+
   tray = new Tray(trayImage);
-  tray.setToolTip('Troko-Desk');
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      {
-        label: 'Mostrar/Ocultar Troko',
-        click: toggleWindowVisibility,
-      },
-      {
-        label: 'Abrir en navegador',
-        click: () => {
-          void shell.openExternal(resolvedServerUrl);
-        },
-      },
-      { type: 'separator' },
-      {
-        label: 'Salir de Troko',
-        click: () => {
-          void shutdownAndQuit();
-        },
-      },
-    ])
-  );
+  tray.setToolTip(`Troko-Desk (${registeredHotkey})`);
+  rebuildTrayMenu();
   tray.on('click', toggleWindowVisibility);
 
   app.on('second-instance', () => {
-    if (!win.isDestroyed()) {
-      win.show();
-      win.focus();
-    }
+    summonWindow();
   });
 
   ipcMain.on(TROKO_IPC_CHANNELS.SET_INTERACTIVE, (_event, interactive) => {
@@ -363,6 +497,56 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
 
   ipcMain.on(TROKO_IPC_CHANNELS.QUIT, () => {
     void shutdownAndQuit();
+  });
+
+  ipcMain.on(TROKO_DESKTOP_IPC_CHANNELS.NOTIFY, (_event, payload) => {
+    try {
+      if (!Notification || (Notification.isSupported && !Notification.isSupported())) {
+        return;
+      }
+      const data = (payload && typeof payload === 'object' ? payload : {}) as {
+        title?: string;
+        body?: string;
+      };
+      const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : 'Troko-Desk';
+      const body = typeof data.body === 'string' ? data.body.trim() : '';
+      const notif = new Notification({
+        title,
+        body,
+        ...(trayImage ? { icon: trayImage } : {}),
+      });
+      notif.show();
+    } catch {
+      // Ignore notification errors on unsupported platforms
+    }
+  });
+
+  ipcMain.handle?.(TROKO_DESKTOP_IPC_CHANNELS.GET_DESKTOP_INFO, () => ({
+    hotkey: registeredHotkey,
+    openAtLogin: getOpenAtLogin(),
+    platform: process.platform,
+  }));
+
+  ipcMain.handle?.(TROKO_DESKTOP_IPC_CHANNELS.SET_AUTO_LAUNCH, (_event, enabled) => {
+    const next = setOpenAtLogin(Boolean(enabled));
+    rebuildTrayMenu();
+    return next;
+  });
+
+  ipcMain.handle?.(TROKO_DESKTOP_IPC_CHANNELS.OPEN_EXTERNAL, async (_event, url) => {
+    if (typeof url === 'string' && isSafeExternalUrl(url)) {
+      await shell.openExternal(url);
+      return true;
+    }
+    return false;
+  });
+
+  app.on('will-quit', () => {
+    try {
+      globalShortcut?.unregisterAll();
+    } catch {
+      // ignore
+    }
   });
 
   app.on('before-quit', () => {

@@ -62,6 +62,7 @@ export function App() {
   const isElectron = Boolean(window.trokoElectron?.isElectron);
   const lastInteractiveRef = useRef<boolean | null>(null);
   const speakRef = useRef<(text: string) => void>(() => {});
+  const playChimeRef = useRef<(kind?: 'remind' | 'success' | 'focus') => void>(() => {});
 
   const {
     connectionStatus,
@@ -89,6 +90,8 @@ export function App() {
   } = useTrokoEvents({
     onAlertSpeech: (text) => {
       speakRef.current(text);
+      playChimeRef.current('remind');
+      window.trokoElectron?.notify?.('Troko-Desk', text);
     },
   });
 
@@ -195,8 +198,9 @@ export function App() {
     [isOpen, refreshAll, settings?.voiceEnabled]
   );
 
-  const { togglePushToTalk, speakText } = useVoiceAudio({
+  const { togglePushToTalk, speakText, playChime } = useVoiceAudio({
     voiceEnabled: settings?.voiceEnabled ?? false,
+    soundEnabled: settings?.soundEnabled ?? true,
     wakeWordEnabled: settings?.wakeWordEnabled ?? true,
     wakeWord: settings?.wakeWord ?? 'Troko',
     onListenStart: (transcript) => {
@@ -248,6 +252,56 @@ export function App() {
   });
 
   speakRef.current = speakText;
+  playChimeRef.current = playChime;
+
+  useEffect(() => {
+    const bridge = window.trokoElectron;
+    if (!bridge?.onSummoned) return;
+    let pulseTimer: number | undefined;
+    const unsubscribe = bridge.onSummoned(() => {
+      setAsleepByCommand(false);
+      setPreviewMood(null);
+      setPreviewState('attentive');
+      if (pulseTimer) window.clearTimeout(pulseTimer);
+      pulseTimer = window.setTimeout(() => {
+        setPreviewState((prev) => (prev === 'attentive' ? null : prev));
+      }, 1600);
+    });
+    return () => {
+      if (pulseTimer) window.clearTimeout(pulseTimer);
+      unsubscribe();
+    };
+  }, []);
+
+  const prevReadyForBreakRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const ready = Boolean(focusState?.readyForBreak);
+    if (prevReadyForBreakRef.current === false && ready) {
+      playChime('focus');
+      const msg =
+        focusState?.lastCompletedPhase === 'break'
+          ? 'Descanso completado. ¡Listo para volver al enfoque!'
+          : 'Bloque de enfoque completado. Hora de tomar un descanso.';
+      window.trokoElectron?.notify?.('Troko-Desk', msg);
+    }
+    prevReadyForBreakRef.current = ready;
+  }, [focusState?.readyForBreak, focusState?.lastCompletedPhase, playChime]);
+
+  const seenFinishedTimersRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const finished = timers.filter((t) => t.status === 'finished');
+    if (seenFinishedTimersRef.current === null) {
+      seenFinishedTimersRef.current = new Set(finished.map((t) => t.id));
+      return;
+    }
+    for (const tm of finished) {
+      if (!seenFinishedTimersRef.current.has(tm.id)) {
+        seenFinishedTimersRef.current.add(tm.id);
+        playChime('success');
+        window.trokoElectron?.notify?.('Temporizador finalizado', tm.label || 'Tiempo cumplido');
+      }
+    }
+  }, [timers, playChime]);
 
   const handleTriggerClick = (): void => {
     setShowNotchHint(false);
