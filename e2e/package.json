@@ -1,0 +1,21 @@
+{
+  "name": "troko-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Opaque-box Playwright E2E test suite for Troko-Desk",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:list": "playwright test --list",
+    "test:tier1": "playwright test tests/tier1",
+    "test:tier2": "playwright test tests/tier2",
+    "test:tier3": "playwright test tests/tier3",
+    "test:tier4": "playwright test tests/tier4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3"
+  }
+}

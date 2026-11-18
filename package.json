@@ -1,0 +1,25 @@
+{
+  "name": "troko-desk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm --workspace=server run dev\" \"npm --workspace=web run dev\"",
+    "typecheck": "npm --workspace=server run typecheck && npm --workspace=web run typecheck",
+    "build": "npm --workspace=server run build && npm --workspace=web run build",
+    "start": "npm --workspace=server run start",
+    "test": "npm --workspace=server run test",
+    "test:e2e": "npm --prefix e2e test"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.7",
+    "typescript": "^5.9.3"
+  }
+}
