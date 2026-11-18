@@ -2,6 +2,7 @@ import { Crosshair, Download, Key, Plug, Shield, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type {
   AIProviderType,
+  AiConnectionTestResult,
   AppSettings,
   IntegrationRecord,
   OSPermissionStatus,
@@ -47,11 +48,29 @@ export function AjustesTab({
   const [focusMinutes, setFocusMinutes] = useState(settings?.focusMinutes ?? 25);
   const [breakMinutes, setBreakMinutes] = useState(settings?.breakMinutes ?? 5);
   const [privacyStatus, setPrivacyStatus] = useState<string | null>(null);
+  const [detectingOllama, setDetectingOllama] = useState(false);
+  const [detectedModels, setDetectedModels] = useState<string[]>([]);
+  const [detectedEndpoint, setDetectedEndpoint] = useState<string | null>(null);
+  const [detectMessage, setDetectMessage] = useState<string | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionResult, setConnectionResult] =
+    useState<AiConnectionTestResult | null>(null);
 
   const [tgBotToken, setTgBotToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
   const [weatherCity, setWeatherCity] = useState('');
   const [tavilyKey, setTavilyKey] = useState('');
+  const [imapHost, setImapHost] = useState('');
+  const [imapPort, setImapPort] = useState('993');
+  const [smtpHost, setSmtpHost] = useState('');
+  const [smtpPort, setSmtpPort] = useState('465');
+  const [mailUser, setMailUser] = useState('');
+  const [mailPass, setMailPass] = useState('');
+  const [testingImapSmtp, setTestingImapSmtp] = useState(false);
+  const [imapSmtpTestResult, setImapSmtpTestResult] = useState<{
+    ok: boolean;
+    details: string;
+  } | null>(null);
 
   useEffect(() => {
     void apiClient.listIntegrations().then(() => onRefreshAll());
@@ -82,6 +101,29 @@ export function AjustesTab({
     if (tv?.config && typeof tv.config['apiKey'] === 'string') {
       setTavilyKey(tv.config['apiKey']);
     }
+    const mail = integrations.find((i) => i.type === 'imap_smtp');
+    if (mail?.config) {
+      const legacyHost =
+        typeof mail.config['host'] === 'string' ? mail.config['host'] : '';
+      if (typeof mail.config['imapHost'] === 'string') {
+        setImapHost(mail.config['imapHost']);
+      } else if (legacyHost) {
+        setImapHost(legacyHost);
+      }
+      if (mail.config['imapPort'] !== undefined) {
+        setImapPort(String(mail.config['imapPort']));
+      }
+      if (typeof mail.config['smtpHost'] === 'string') {
+        setSmtpHost(mail.config['smtpHost']);
+      } else if (legacyHost) {
+        setSmtpHost(legacyHost);
+      }
+      if (mail.config['smtpPort'] !== undefined) {
+        setSmtpPort(String(mail.config['smtpPort']));
+      }
+      if (typeof mail.config['user'] === 'string') setMailUser(mail.config['user']);
+      if (typeof mail.config['pass'] === 'string') setMailPass(mail.config['pass']);
+    }
   }, [integrations]);
 
   const handleSaveAi = async (e: React.FormEvent) => {
@@ -94,6 +136,73 @@ export function AjustesTab({
       desktopTargetDir: desktopDir,
     });
     setPrivacyStatus('Configuración de IA guardada.');
+  };
+
+  const handleDetectOllama = async () => {
+    setDetectingOllama(true);
+    setDetectMessage(null);
+    try {
+      const targetEndpoint =
+        aiProvider === 'ollama' && aiEndpoint.trim().startsWith('http')
+          ? aiEndpoint.trim()
+          : undefined;
+      const res = await apiClient.detectOllama(targetEndpoint);
+      if (res.ollamaDetected) {
+        setDetectedModels(res.models);
+        setDetectedEndpoint(res.endpoint);
+        if (res.models.length > 0) {
+          setDetectMessage(
+            `Ollama detectado en ${res.endpoint} (${res.models.length} modelos).`
+          );
+          if (!aiModel.trim() && res.models[0]) {
+            setAiModel(res.models[0]);
+          }
+        } else {
+          setDetectMessage(
+            `Ollama detectado en ${res.endpoint}, pero no tiene modelos descargados.`
+          );
+        }
+      } else {
+        setDetectedModels([]);
+        setDetectedEndpoint(null);
+        setDetectMessage(
+          `No se detectó Ollama en ${res.endpoint}${res.error ? ` (${res.error})` : ''}.`
+        );
+      }
+    } catch (err) {
+      setDetectedModels([]);
+      setDetectedEndpoint(null);
+      setDetectMessage(
+        err instanceof Error ? err.message : 'Error al detectar Ollama.'
+      );
+    } finally {
+      setDetectingOllama(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setConnectionResult(null);
+    try {
+      const res = await apiClient.testAiConnection({
+        aiProvider,
+        aiEndpoint,
+        aiModel,
+        aiApiKey,
+      });
+      setConnectionResult(res);
+    } catch (err) {
+      setConnectionResult({
+        ok: false,
+        provider: aiProvider,
+        endpoint: aiEndpoint,
+        model: aiModel,
+        latencyMs: 0,
+        error: err instanceof Error ? err.message : 'Error al probar conexión',
+      });
+    } finally {
+      setTestingConnection(false);
+    }
   };
 
   const handleSaveFocus = async (e: React.FormEvent) => {
@@ -125,6 +234,17 @@ export function AjustesTab({
         apiKey: tavilyKey || (item.config['apiKey'] ?? ''),
       };
     }
+    if (item.type === 'imap_smtp') {
+      return {
+        ...item.config,
+        imapHost: imapHost.trim(),
+        imapPort: Number(imapPort) || 993,
+        smtpHost: smtpHost.trim(),
+        smtpPort: Number(smtpPort) || 465,
+        user: mailUser.trim(),
+        pass: mailPass,
+      };
+    }
     return item.config;
   };
 
@@ -142,6 +262,25 @@ export function AjustesTab({
       config: getDraftConfigForType(item),
     });
     await onRefreshAll();
+  };
+
+  const handleTestImapSmtp = async (item: IntegrationRecord) => {
+    setTestingImapSmtp(true);
+    setImapSmtpTestResult(null);
+    try {
+      const res = await apiClient.testIntegration(
+        'imap_smtp',
+        getDraftConfigForType(item)
+      );
+      setImapSmtpTestResult({ ok: res.ok, details: res.details });
+    } catch (err) {
+      setImapSmtpTestResult({
+        ok: false,
+        details: err instanceof Error ? err.message : 'Error al probar IMAP/SMTP',
+      });
+    } finally {
+      setTestingImapSmtp(false);
+    }
   };
 
   const handleExportMemory = async () => {
@@ -255,6 +394,7 @@ export function AjustesTab({
             <input
               type="text"
               name="model"
+              list="ollama-models-list"
               placeholder="llama3.2:3b"
               value={aiModel}
               onChange={(e) => setAiModel(e.target.value)}
@@ -262,6 +402,11 @@ export function AjustesTab({
               className="input mono"
               style={{ width: '100%', marginTop: '3px' }}
             />
+            <datalist id="ollama-models-list">
+              {detectedModels.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
           </label>
 
           <label style={{ fontSize: '11px', color: '#8E8E93' }}>
@@ -293,13 +438,110 @@ export function AjustesTab({
           </label>
         </div>
 
-        <button
-          type="submit"
-          data-testid="save-ai-settings-btn"
-          className="btn-lime"
-        >
-          Guardar
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="submit"
+            data-testid="save-ai-settings-btn"
+            className="btn-lime"
+          >
+            Guardar
+          </button>
+
+          <button
+            type="button"
+            data-testid="detect-ollama-btn"
+            className="btn-ghost"
+            disabled={detectingOllama}
+            onClick={() => void handleDetectOllama()}
+          >
+            {detectingOllama ? 'Detectando...' : 'Detectar Ollama'}
+          </button>
+
+          <button
+            type="button"
+            data-testid="test-ai-connection-btn"
+            className="btn-ghost"
+            disabled={testingConnection}
+            onClick={() => void handleTestConnection()}
+          >
+            {testingConnection ? 'Probando...' : 'Probar conexión'}
+          </button>
+        </div>
+
+        {detectMessage && (
+          <div
+            data-testid="ollama-detect-status"
+            style={{
+              marginTop: '8px',
+              fontSize: '11px',
+              color: detectedModels.length > 0 ? '#B6F23A' : '#B3B0A6',
+            }}
+          >
+            {detectMessage}
+          </div>
+        )}
+
+        {detectedModels.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '6px',
+              marginTop: '6px',
+            }}
+          >
+            {detectedModels.map((modelName) => (
+              <button
+                key={modelName}
+                type="button"
+                data-testid={`ollama-model-chip-${modelName}`}
+                className="btn-ghost mono"
+                style={{
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  borderColor:
+                    aiModel === modelName
+                      ? '#B6F23A'
+                      : 'rgba(242, 235, 217, 0.16)',
+                  color: aiModel === modelName ? '#B6F23A' : '#F2EBD9',
+                }}
+                onClick={() => {
+                  setAiProvider('ollama');
+                  setAiModel(modelName);
+                  setAiEndpoint(detectedEndpoint || 'http://127.0.0.1:11434');
+                }}
+              >
+                {modelName}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {connectionResult && (
+          <div
+            data-testid="ai-connection-status"
+            style={{
+              marginTop: '8px',
+              padding: '6px 10px',
+              borderRadius: '8px',
+              fontSize: '11px',
+              background: connectionResult.ok
+                ? 'rgba(182, 242, 58, 0.12)'
+                : 'rgba(255, 90, 95, 0.12)',
+              color: connectionResult.ok ? '#B6F23A' : '#FF5A5F',
+            }}
+          >
+            {connectionResult.ok
+              ? `Conectado (${connectionResult.latencyMs} ms)${
+                  connectionResult.replyPreview
+                    ? ` · ${connectionResult.replyPreview}`
+                    : ''
+                }`
+              : `Error (${connectionResult.latencyMs} ms): ${
+                  connectionResult.error ?? 'No se pudo conectar'
+                }`}
+          </div>
+        )}
       </form>
 
       {/* Focus Settings Section */}
@@ -474,6 +716,107 @@ export function AjustesTab({
                     className="input mono"
                     style={{ flex: 1, fontSize: '11px' }}
                   />
+                </div>
+              )}
+
+              {int.type === 'imap_smtp' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '2fr 1fr 2fr 1fr',
+                      gap: '6px',
+                    }}
+                  >
+                    <input
+                      type="text"
+                      placeholder="IMAP Host (ej. imap.gmail.com)"
+                      aria-label="IMAP Host"
+                      data-testid="imap-host-input"
+                      value={imapHost}
+                      onChange={(e) => setImapHost(e.target.value)}
+                      className="input mono"
+                      style={{ fontSize: '11px' }}
+                    />
+                    <input
+                      type="number"
+                      placeholder="993"
+                      aria-label="IMAP Port"
+                      data-testid="imap-port-input"
+                      value={imapPort}
+                      onChange={(e) => setImapPort(e.target.value)}
+                      className="input mono"
+                      style={{ fontSize: '11px' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="SMTP Host (ej. smtp.gmail.com)"
+                      aria-label="SMTP Host"
+                      data-testid="smtp-host-input"
+                      value={smtpHost}
+                      onChange={(e) => setSmtpHost(e.target.value)}
+                      className="input mono"
+                      style={{ fontSize: '11px' }}
+                    />
+                    <input
+                      type="number"
+                      placeholder="465"
+                      aria-label="SMTP Port"
+                      data-testid="smtp-port-input"
+                      value={smtpPort}
+                      onChange={(e) => setSmtpPort(e.target.value)}
+                      className="input mono"
+                      style={{ fontSize: '11px' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="Usuario / Correo"
+                      aria-label="Usuario IMAP/SMTP"
+                      data-testid="imap-user-input"
+                      value={mailUser}
+                      onChange={(e) => setMailUser(e.target.value)}
+                      className="input mono"
+                      style={{ flex: 1, fontSize: '11px' }}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Contraseña o App Password"
+                      aria-label="Contraseña IMAP/SMTP"
+                      data-testid="imap-pass-input"
+                      value={mailPass}
+                      onChange={(e) => setMailPass(e.target.value)}
+                      className="input mono"
+                      style={{ flex: 1, fontSize: '11px' }}
+                    />
+                    <button
+                      type="button"
+                      data-testid="test-integration-imap_smtp"
+                      className="btn-ghost"
+                      disabled={testingImapSmtp}
+                      style={{ padding: '4px 10px', fontSize: '11px' }}
+                      onClick={() => void handleTestImapSmtp(int)}
+                    >
+                      {testingImapSmtp ? 'Probando...' : 'Probar'}
+                    </button>
+                  </div>
+                  {imapSmtpTestResult && (
+                    <div
+                      data-testid="imap-smtp-test-status"
+                      style={{
+                        fontSize: '11px',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        background: imapSmtpTestResult.ok
+                          ? 'rgba(182, 242, 58, 0.12)'
+                          : 'rgba(255, 90, 95, 0.12)',
+                        color: imapSmtpTestResult.ok ? '#B6F23A' : '#FF5A5F',
+                      }}
+                    >
+                      {imapSmtpTestResult.details}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

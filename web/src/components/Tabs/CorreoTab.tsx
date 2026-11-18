@@ -1,4 +1,4 @@
-import { Edit3, Mail, Reply, Send, Trash2 } from 'lucide-react';
+import { Edit3, Mail, RefreshCw, Reply, Send, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type {
   EmailDraft,
@@ -22,6 +22,8 @@ export function CorreoTab({
   const [replyTarget, setReplyTarget] = useState<EmailMessage | null>(null);
   const [newBody, setNewBody] = useState('');
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [mailError, setMailError] = useState<string | null>(null);
   const [edits, setEdits] = useState<
     Record<string, { subject: string; body: string }>
   >({});
@@ -68,20 +70,43 @@ export function CorreoTab({
     await onRefreshAll();
   };
 
-  const handleSendDraft = async (draft: EmailDraft) => {
-    const edit = edits[draft.id];
-    if (edit && (edit.subject !== draft.subject || edit.body !== draft.body)) {
-      await apiClient.updateEmailDraft(draft.id, {
-        subject: edit.subject,
-        body: edit.body,
-      });
+  const handleSync = async () => {
+    setSyncing(true);
+    setMailError(null);
+    try {
+      await apiClient.syncInbox();
+      await onRefreshAll();
+    } catch (err) {
+      setMailError(
+        err instanceof Error ? err.message : 'Error al sincronizar el correo'
+      );
+    } finally {
+      setSyncing(false);
     }
-    await apiClient.sendEmailDraft(draft.id);
-    setEditingDraftId(null);
-    await onRefreshAll();
+  };
+
+  const handleSendDraft = async (draft: EmailDraft) => {
+    setMailError(null);
+    try {
+      const edit = edits[draft.id];
+      if (edit && (edit.subject !== draft.subject || edit.body !== draft.body)) {
+        await apiClient.updateEmailDraft(draft.id, {
+          subject: edit.subject,
+          body: edit.body,
+        });
+      }
+      await apiClient.sendEmailDraft(draft.id);
+      setEditingDraftId(null);
+      await onRefreshAll();
+    } catch (err) {
+      setMailError(
+        err instanceof Error ? err.message : 'Error al enviar el borrador'
+      );
+    }
   };
 
   const handleDiscardDraft = async (id: string) => {
+    setMailError(null);
     await apiClient.discardEmailDraft(id);
     setEditingDraftId(null);
     await onRefreshAll();
@@ -100,10 +125,38 @@ export function CorreoTab({
           <span className="eyebrow">Confirmación explícita obligatoria</span>
           <h2>Bandeja de Correo y Borradores</h2>
         </div>
-        <span className="sub mono" data-testid="mail-unread-badge">
-          No leídos: {unreadCount}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            data-testid="sync-inbox-btn"
+            className="btn-ghost"
+            disabled={syncing}
+            style={{ padding: '4px 10px', fontSize: '11px' }}
+            onClick={() => void handleSync()}
+          >
+            <RefreshCw size={12} />
+            <span>{syncing ? 'Sincronizando...' : 'Sincronizar'}</span>
+          </button>
+          <span className="sub mono" data-testid="mail-unread-badge">
+            No leídos: {unreadCount}
+          </span>
+        </div>
       </header>
+
+      {mailError && (
+        <div
+          data-testid="mail-error-banner"
+          style={{
+            background: 'rgba(255, 90, 95, 0.14)',
+            color: '#FF5A5F',
+            padding: '8px 12px',
+            borderRadius: '10px',
+            fontSize: '12px',
+          }}
+        >
+          {mailError}
+        </div>
+      )}
 
       {/* Inbox Messages List */}
       <div

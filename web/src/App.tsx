@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   IslandState,
   IslandStatusPayload,
@@ -59,6 +59,8 @@ const SAMPLE_PEEK_CARDS: Record<'desktop_tidy' | 'email_draft' | 'habit_remind',
 };
 
 export function App() {
+  const isElectron = Boolean(window.trokoElectron?.isElectron);
+  const lastInteractiveRef = useRef<boolean | null>(null);
   const speakRef = useRef<(text: string) => void>(() => {});
 
   const {
@@ -418,11 +420,63 @@ export function App() {
   const handleQuitTroko = (): void => {
     setIsPinned(false);
     setIsOpen(false);
+    if (isElectron) {
+      window.trokoElectron?.quitApp();
+      return;
+    }
     setIsExited(true);
     void apiClient.exitApp();
   };
 
   const showOnboarding = onboarding !== null && !onboarding.onboardingCompleted;
+
+  useEffect(() => {
+    if (!isElectron) return;
+    document.documentElement.classList.add('troko-electron');
+    return () => {
+      document.documentElement.classList.remove('troko-electron');
+    };
+  }, [isElectron]);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const bridge = window.trokoElectron;
+    if (!bridge) return;
+
+    const updateInteractive = (next: boolean) => {
+      if (lastInteractiveRef.current === next) return;
+      lastInteractiveRef.current = next;
+      bridge.setInteractive(next);
+    };
+
+    if (showOnboarding) {
+      updateInteractive(true);
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      const overInteractive = Boolean(
+        showOnboarding ||
+          target?.closest(
+            '#island, [data-testid="bienvenida-modal"], [data-testid="launched-app-window"], [data-testid="exit-overlay"]'
+          )
+      );
+      updateInteractive(overInteractive);
+    };
+
+    const handleMouseLeave = () => {
+      if (!showOnboarding) {
+        updateInteractive(false);
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    document.addEventListener('mouseleave', handleMouseLeave);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [isElectron, showOnboarding]);
 
   return (
     <>
@@ -507,17 +561,19 @@ export function App() {
         </div>
       )}
 
-      <DesktopStage
-        connectionStatus={connectionStatus}
-        currentState={effectiveStatus.state}
-        currentMood={effectiveStatus.mood}
-        currentPeekKind={effectiveStatus.peekCard?.kind ?? null}
-        showNotchHint={showNotchHint && !isOpen}
-        onSelectState={handleSelectState}
-        onSelectMood={handleSelectMood}
-        onSelectPeek={handleSelectPeek}
-        onResetPreview={handleResetPreview}
-      />
+      {!isElectron && (
+        <DesktopStage
+          connectionStatus={connectionStatus}
+          currentState={effectiveStatus.state}
+          currentMood={effectiveStatus.mood}
+          currentPeekKind={effectiveStatus.peekCard?.kind ?? null}
+          showNotchHint={showNotchHint && !isOpen}
+          onSelectState={handleSelectState}
+          onSelectMood={handleSelectMood}
+          onSelectPeek={handleSelectPeek}
+          onResetPreview={handleResetPreview}
+        />
+      )}
 
       <BienvenidaModal
         open={showOnboarding}

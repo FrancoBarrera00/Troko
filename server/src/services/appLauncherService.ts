@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import type {
   IntegrationRecord,
   IntegrationType,
@@ -18,6 +19,46 @@ export const WHITELISTED_APPS = [
 ] as const;
 
 export type WhitelistedAppName = (typeof WHITELISTED_APPS)[number];
+
+export interface PlatformAppCommand {
+  cmd: string;
+  args: string[];
+}
+
+export type SupportedPlatform = 'win32' | 'darwin' | 'linux';
+
+export const PLATFORM_APP_COMMANDS: Record<
+  SupportedPlatform,
+  Record<WhitelistedAppName, PlatformAppCommand>
+> = {
+  win32: {
+    Notas: { cmd: 'notepad.exe', args: [] },
+    Safari: { cmd: 'msedge.exe', args: [] },
+    Calendario: { cmd: 'explorer.exe', args: ['outlookcal:'] },
+    Calculadora: { cmd: 'calc.exe', args: [] },
+    Música: { cmd: 'explorer.exe', args: ['mswindowsmusic:'] },
+    Correo: { cmd: 'explorer.exe', args: ['mailto:'] },
+    Finder: { cmd: 'explorer.exe', args: [] },
+  },
+  darwin: {
+    Notas: { cmd: 'open', args: ['-a', 'Notes'] },
+    Safari: { cmd: 'open', args: ['-a', 'Safari'] },
+    Calendario: { cmd: 'open', args: ['-a', 'Calendar'] },
+    Calculadora: { cmd: 'open', args: ['-a', 'Calculator'] },
+    Música: { cmd: 'open', args: ['-a', 'Music'] },
+    Correo: { cmd: 'open', args: ['-a', 'Mail'] },
+    Finder: { cmd: 'open', args: ['-a', 'Finder'] },
+  },
+  linux: {
+    Notas: { cmd: 'gedit', args: [] },
+    Safari: { cmd: 'xdg-open', args: ['https://'] },
+    Calendario: { cmd: 'gnome-calendar', args: [] },
+    Calculadora: { cmd: 'gnome-calculator', args: [] },
+    Música: { cmd: 'rhythmbox', args: [] },
+    Correo: { cmd: 'thunderbird', args: [] },
+    Finder: { cmd: 'xdg-open', args: ['.'] },
+  },
+};
 
 function normalizeText(s: string): string {
   return s
@@ -65,6 +106,7 @@ export class AppLauncherService {
     app: WhitelistedAppName;
     appName: WhitelistedAppName;
     launchedAt: string;
+    osLaunched: boolean;
   } {
     const validated = validateAppLaunchInput(rawInput);
     if (!validated.ok) {
@@ -76,6 +118,31 @@ export class AppLauncherService {
         400,
         `Aplicación "${validated.value.appName}" no está en la lista segura (${WHITELISTED_APPS.join(', ')})`
       );
+    }
+
+    let osLaunched = false;
+    if (
+      process.env['NODE_ENV'] !== 'test' &&
+      process.env['TROKO_DISABLE_REAL_APP_LAUNCH'] !== '1'
+    ) {
+      const platform = process.platform;
+      if (platform === 'win32' || platform === 'darwin' || platform === 'linux') {
+        const spec = PLATFORM_APP_COMMANDS[platform][canonical];
+        if (spec) {
+          try {
+            const child = spawn(spec.cmd, spec.args, {
+              detached: true,
+              stdio: 'ignore',
+              shell: false,
+            });
+            child.on('error', () => {});
+            child.unref();
+            osLaunched = true;
+          } catch {
+            osLaunched = false;
+          }
+        }
+      }
     }
 
     const launchedAt = new Date().toISOString();
@@ -98,6 +165,7 @@ export class AppLauncherService {
       app: canonical,
       appName: canonical,
       launchedAt,
+      osLaunched,
     };
   }
 

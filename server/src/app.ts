@@ -10,7 +10,9 @@ import { registerCoreRoutes } from './routes/core.ts';
 import { registerHabitRoutes } from './routes/habits.ts';
 import { registerOsToolsRoutes } from './routes/osTools.ts';
 import { registerProductivityRoutes } from './routes/productivity.ts';
+import { AiProviderService } from './services/aiProvider.ts';
 import { AppLauncherService } from './services/appLauncherService.ts';
+import { BridgeService } from './services/bridgeService.ts';
 import { HabitService } from './services/habitService.ts';
 import { MailerService } from './services/mailerService.ts';
 import { NluService } from './services/nluService.ts';
@@ -193,6 +195,8 @@ export interface ServerContext {
   readonly organizerService: OrganizerService;
   readonly mailerService: MailerService;
   readonly appLauncherService: AppLauncherService;
+  readonly bridgeService: BridgeService;
+  readonly aiProvider: AiProviderService;
   readonly nluService: NluService;
   readonly version: string;
   readonly startedAtMs: number;
@@ -298,8 +302,17 @@ export function createApp(config: AppConfig = {}): TrokoApp {
     settingsService,
     config.desktopDir
   );
-  const mailerService = new MailerService(db, eventBus);
   const appLauncherService = new AppLauncherService(db, eventBus);
+  const mailerService = new MailerService(
+    db,
+    eventBus,
+    () =>
+      appLauncherService
+        .listIntegrations()
+        .find((item) => item.type === 'imap_smtp') ?? null
+  );
+  const aiProvider = new AiProviderService();
+  const bridgeService = new BridgeService();
   const nluService = new NluService({
     db,
     eventBus,
@@ -308,6 +321,8 @@ export function createApp(config: AppConfig = {}): TrokoApp {
     mailerService,
     organizerService,
     appLauncherService,
+    aiProvider,
+    bridgeService,
   });
   const router = new Router();
 
@@ -321,6 +336,8 @@ export function createApp(config: AppConfig = {}): TrokoApp {
     organizerService,
     mailerService,
     appLauncherService,
+    bridgeService,
+    aiProvider,
     nluService,
     version,
     startedAtMs: Date.now(),

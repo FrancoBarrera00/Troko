@@ -1,3 +1,5 @@
+import { AI_PROVIDERS } from '../../../shared/types.ts';
+import type { AIProviderType } from '../../../shared/types.ts';
 import { validateChatCommandInput } from '../../../shared/validators.ts';
 import { HttpError, sendJson } from '../app.ts';
 import type { Router, ServerContext } from '../app.ts';
@@ -103,5 +105,39 @@ export function registerAiRoutes(router: Router, ctx: ServerContext): void {
       peekCard: null,
     });
     sendJson(res, 200, { ok: true, exited: true, island });
+  });
+
+  // AI Detection & Connection Test
+  router.get('/api/ai/detect', async (req, res) => {
+    const endpointParam = req.query.get('endpoint')?.trim();
+    const result = await ctx.aiProvider.detectOllama(
+      endpointParam && endpointParam.length > 0 ? endpointParam : undefined
+    );
+    sendJson(res, 200, result);
+  });
+
+  router.post('/api/ai/test', async (req, res) => {
+    const body = await req.readJson<Record<string, unknown>>();
+    const current = ctx.settingsService.getSettings();
+
+    const aiProvider =
+      typeof body['aiProvider'] === 'string' &&
+      (AI_PROVIDERS as readonly string[]).includes(body['aiProvider'])
+        ? (body['aiProvider'] as AIProviderType)
+        : current.aiProvider;
+    const aiEndpoint =
+      typeof body['aiEndpoint'] === 'string' ? body['aiEndpoint'] : current.aiEndpoint;
+    const aiModel =
+      typeof body['aiModel'] === 'string' ? body['aiModel'] : current.aiModel;
+    const aiApiKey =
+      typeof body['aiApiKey'] === 'string' ? body['aiApiKey'] : current.aiApiKey;
+
+    const result = await ctx.aiProvider.testConnection({
+      aiProvider,
+      aiEndpoint,
+      aiModel,
+      aiApiKey,
+    });
+    sendJson(res, 200, result);
   });
 }

@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "main.ts",
+  "main": "dist/main.js",
   "description": "Frameless always-on-top Dynamic Island Electron wrapper for Troko-Desk",
   "scripts": {
-    "start": "electron main.ts"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "node -e \"import('node:fs').then(fs => fs.rmSync('dist', { recursive: true, force: true }))\" && tsc -p tsconfig.json && tsc -p tsconfig.preload.json && node -e \"import('node:fs').then(fs => fs.renameSync('dist/preload.js', 'dist/preload.cjs'))\"",
+    "start": "electron dist/main.js",
+    "dev": "TROKO_SERVER_URL=${TROKO_SERVER_URL:-http://127.0.0.1:5173} electron dist/main.js"
   }
 }

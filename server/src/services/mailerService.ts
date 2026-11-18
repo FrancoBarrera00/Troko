@@ -1,8 +1,18 @@
 import crypto from 'node:crypto';
-import type { EmailDraft, EmailDraftStatus, EmailMessage } from '../../../shared/types.ts';
+import type {
+  EmailDraft,
+  EmailDraftStatus,
+  EmailMessage,
+  IntegrationRecord,
+} from '../../../shared/types.ts';
 import { HttpError } from '../app.ts';
 import type { TrokoDatabase } from '../db/database.ts';
 import type { EventBus } from '../eventBus.ts';
+import {
+  fetchImapInbox,
+  sendSmtpMail,
+  type ImapSmtpConfig,
+} from './mailTransport.ts';
 
 export interface EmailMessageCompat extends EmailMessage {
   senderName: string;
@@ -17,10 +27,67 @@ export interface EmailDraftCompat extends EmailDraft {
 export class MailerService {
   private readonly db: TrokoDatabase;
   private readonly eventBus: EventBus;
+  private readonly getImapSmtpIntegration?: () => IntegrationRecord | null;
 
-  constructor(db: TrokoDatabase, eventBus: EventBus) {
+  constructor(
+    db: TrokoDatabase,
+    eventBus: EventBus,
+    getImapSmtpIntegration?: () => IntegrationRecord | null
+  ) {
     this.db = db;
     this.eventBus = eventBus;
+    this.getImapSmtpIntegration = getImapSmtpIntegration;
+  }
+
+  private resolveImapSmtpConfig(): {
+    enabled: boolean;
+    config: ImapSmtpConfig | null;
+  } {
+    const integration = this.getImapSmtpIntegration?.() ?? null;
+    if (!integration || integration.enabled !== true) {
+      return { enabled: false, config: null };
+    }
+    const raw = integration.config ?? {};
+    const str = (key: string): string =>
+      typeof raw[key] === 'string' ? raw[key].trim() : '';
+    const num = (key: string, fallback: number): number => {
+      const val = Number(raw[key]);
+      return Number.isFinite(val) && val > 0 ? val : fallback;
+    };
+    const boolOpt = (key: string): boolean | undefined =>
+      typeof raw[key] === 'boolean' ? raw[key] : undefined;
+
+    const host = str('host');
+    const imapHost = str('imapHost') || host;
+    const smtpHost = str('smtpHost') || host;
+    const user = str('user');
+    const pass = str('pass');
+
+    return {
+      enabled: true,
+      config: {
+        host: host || undefined,
+        imapHost,
+        imapPort: num('imapPort', 993),
+        smtpHost,
+        smtpPort: num('smtpPort', 465),
+        user,
+        pass,
+        imapTls: boolOpt('imapTls'),
+        smtpTls: boolOpt('smtpTls'),
+        rejectUnauthorized: boolOpt('rejectUnauthorized'),
+      },
+    };
+  }
+
+  isRealMailEnabled(): boolean {
+    const { enabled, config } = this.resolveImapSmtpConfig();
+    if (!enabled || !config) return false;
+    return Boolean(
+      (config.imapHost || config.smtpHost || config.host) &&
+        config.user &&
+        config.pass
+    );
   }
 
   ensureSeeded(): void {
@@ -128,6 +195,78 @@ export class MailerService {
       drafts,
       unreadCount,
     };
+  }
+
+  async syncInbox(): Promise<{
+    ok: true;
+    messages: EmailMessageCompat[];
+    drafts: EmailDraftCompat[];
+    unreadCount: number;
+  }> {
+    const { enabled, config } = this.resolveImapSmtpConfig();
+    if (!enabled || !config) {
+      return this.getInbox();
+    }
+
+    const imapHost = config.imapHost?.trim() || config.host?.trim() || '';
+    if (!imapHost || !config.user || !config.pass) {
+      throw new HttpError(
+        400,
+        'Configuración IMAP incompleta (imapHost, user y pass requeridos)'
+      );
+    }
+
+    let fetched;
+    try {
+      fetched = await fetchImapInbox(config, 15);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new HttpError(502, `Error al sincronizar IMAP: ${msg}`);
+    }
+
+    const existsStmt = this.db.db.prepare(
+      'SELECT id FROM email_messages WHERE id = ?'
+    );
+    const updateStmt = this.db.db.prepare(
+      `UPDATE email_messages
+       SET from_name = ?, from_email = ?, subject = ?, snippet = ?, body = ?, received_at = ?
+       WHERE id = ?`
+    );
+    const insertStmt = this.db.db.prepare(
+      `INSERT INTO email_messages (id, from_name, from_email, subject, snippet, body, unread, received_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+
+    for (const msg of fetched) {
+      const existing = existsStmt.get(msg.id) as Record<string, unknown> | undefined;
+      if (existing) {
+        updateStmt.run(
+          msg.fromName,
+          msg.fromEmail,
+          msg.subject,
+          msg.snippet,
+          msg.body,
+          msg.receivedAt,
+          msg.id
+        );
+      } else {
+        insertStmt.run(
+          msg.id,
+          msg.fromName,
+          msg.fromEmail,
+          msg.subject,
+          msg.snippet,
+          msg.body,
+          msg.unread ? 1 : 0,
+          msg.receivedAt
+        );
+      }
+    }
+
+    const inbox = this.getInbox();
+    this.eventBus.publish('mail.unread', { unreadCount: inbox.unreadCount });
+    this.eventBus.publish('data.updated', { scope: 'mail' });
+    return inbox;
   }
 
   findMessageBySenderHint(hint: string): EmailMessageCompat | null {
@@ -276,8 +415,31 @@ export class MailerService {
     return updated;
   }
 
-  sendDraft(id: string): EmailDraftCompat {
+  async sendDraft(id: string): Promise<EmailDraftCompat> {
     const existing = this.getDraftOrThrow(id);
+    const { enabled, config } = this.resolveImapSmtpConfig();
+
+    if (enabled && config) {
+      const smtpHost = config.smtpHost?.trim() || config.host?.trim() || '';
+      if (!smtpHost || !config.user || !config.pass) {
+        throw new HttpError(
+          400,
+          'Configuración SMTP incompleta (smtpHost, user y pass requeridos)'
+        );
+      }
+      try {
+        await sendSmtpMail(config, {
+          toEmail: existing.toEmail,
+          toName: existing.toName,
+          subject: existing.subject,
+          body: existing.body,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new HttpError(502, `Error al enviar correo SMTP: ${msg}`);
+      }
+    }
+
     const nowIso = new Date().toISOString();
 
     this.db.db

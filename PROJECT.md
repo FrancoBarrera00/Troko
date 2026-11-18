@@ -232,3 +232,16 @@ All tables created in M1 migration `001_init.sql` (using `node:sqlite` `Database
 - **Start**: `npm start` (starts local server on `PORT` default `3000`, serving API + SSE + `web/dist`)
 - **Unit & Integration Tests**: `npm test` (runs `node --test` across `server/tests/*.test.ts` using isolated temp SQLite DBs)
 - **E2E Tests**: `npm run test:e2e` (runs Playwright against `/usr/bin/chromium` with `--no-sandbox --disable-dev-shm-usage` against an isolated test server & temp DB/sandbox desktop)
+
+---
+
+## Round 3: Desktop Companion Completion (4 Remaining Pieces)
+
+| # | Name | Scope | Dependencies | Status |
+|---|------|-------|--------------|--------|
+| R3-M1 | Electron Native Floating Window & Windows Packaging | `electron/preload.ts`, `electron/main.ts` (auto-start backend, `app.getPath('userData')`, single-instance, tray, `alwaysOnTop`, `transparent`, `troko:set-interactive` click-through, `troko:quit`), `electron/tsconfig.json`, root `package.json` scripts + `electron-builder` Windows config, `web/` transparent Electron overlay mode (`env.d.ts`, `tokens.css`, `App.tsx`) | none | DONE |
+| R3-M2 | Real Local AI / Ollama Auto-Detection & BYOK UX | `shared/types.ts` (`AiDetectResult`, `AiConnectionTestResult`), `server/src/services/aiProvider.ts` (Ollama `/api/tags` + `/api/chat`, OpenAI-compatible `/v1/chat/completions`, connection test, conversation history, structured JSON fallback), `nluService.ts`, `routes/ai.ts` (`GET /api/ai/detect`, `POST /api/ai/test`), `web/` (`client.ts`, `AjustesTab.tsx` detect/test while keeping `input[name="model"]`, `BienvenidaModal.tsx` non-blocking Ollama banner), `server/tests/m4.ai.test.ts` | none | DONE |
+| R3-M3 | Real IMAP/SMTP Email Alongside Sandbox | `server/src/services/mailTransport.ts` (`node:tls`/`node:net` IMAP & SMTP + connection verify), `mailerService.ts` (`syncInbox()`, SMTP send gated on `imap_smtp.enabled`, mandatory confirmation before send), `routes/osTools.ts` (`/api/mail/sync`, `/api/integrations/:type/test`), `web/` (`AjustesTab.tsx` `imap_smtp` fields + test, `CorreoTab.tsx` sync + error banner, `client.ts`), `server/tests/m5.mail.test.ts` | R3-M2 | DONE |
+| R3-M4 | Real Safe App Launcher & Live Bridges | `server/src/services/appLauncherService.ts` (static per-OS `win32`/`darwin`/`linux` `spawn(..., { shell: false, detached: true })` guarded by `NODE_ENV !== 'test'`, preserving `SHELL_META_REGEX` + whitelist), `server/src/services/bridgeService.ts` (Open-Meteo Weather, Tavily Search, Telegram Bot API via `fetch`), `nluService.ts` bridge intents, `ChatTab.tsx` `TOOL_LABELS`, `server/tests/m5.ostools.test.ts` | R3-M3 | DONE |
+| R3-M5 | Full Verification, New E2E Coverage & Final Audit | Add E2E tests for R3-M1..R3-M4, run full `npm run typecheck && npm run build && npm test && npm run test:e2e`, and perform whole-project Forensic Audit | R3-M1, R3-M2, R3-M3, R3-M4 | DONE |
+

@@ -1,4 +1,6 @@
 import type {
+  AiConnectionTestResult,
+  AiDetectResult,
   AppSettings,
   EmailDraft,
   EmailMessage,
@@ -149,6 +151,22 @@ export const apiClient = {
   },
   exitApp(): Promise<{ ok: true; exited: true; island: IslandStatusPayload }> {
     return requestJson('/api/app/exit', { method: 'POST', body: '{}' });
+  },
+
+  // AI Detection & Connection Test
+  detectOllama(endpoint?: string): Promise<AiDetectResult> {
+    const qs = endpoint ? `?endpoint=${encodeURIComponent(endpoint)}` : '';
+    return requestJson<AiDetectResult>(`/api/ai/detect${qs}`);
+  },
+  testAiConnection(
+    config?: Partial<
+      Pick<AppSettings, 'aiProvider' | 'aiEndpoint' | 'aiModel' | 'aiApiKey'>
+    >
+  ): Promise<AiConnectionTestResult> {
+    return requestJson<AiConnectionTestResult>('/api/ai/test', {
+      method: 'POST',
+      body: JSON.stringify(config ?? {}),
+    });
   },
 
   // Tasks
@@ -467,6 +485,14 @@ export const apiClient = {
   }> {
     return requestJson('/api/mail/inbox');
   },
+  syncInbox(): Promise<{
+    ok: true;
+    messages: EmailMessage[];
+    drafts: EmailDraft[];
+    unreadCount: number;
+  }> {
+    return requestJson('/api/mail/sync', { method: 'POST', body: '{}' });
+  },
   async createEmailDraft(input: {
     sourceMessageId?: string | null;
     toName?: string;
@@ -543,6 +569,20 @@ export const apiClient = {
       }
     );
     return res.integration;
+  },
+  testIntegration(
+    type: string,
+    config?: Record<string, unknown>
+  ): Promise<{
+    ok: boolean;
+    imapOk?: boolean;
+    smtpOk?: boolean;
+    details: string;
+  }> {
+    return requestJson(`/api/integrations/${type}/test`, {
+      method: 'POST',
+      body: JSON.stringify(config ? { config } : {}),
+    });
   },
 
   // Memory Export & Wipe

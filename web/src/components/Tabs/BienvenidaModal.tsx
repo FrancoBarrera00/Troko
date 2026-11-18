@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { AiDetectResult } from '../../../../shared/types.ts';
 import { apiClient, type OnboardingStateResponse } from '../../api/client.ts';
 import { TrokoAvatar } from '../TrokoAvatar/TrokoAvatar.tsx';
 
@@ -20,6 +21,9 @@ export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
     progressPct: 0,
     status: 'idle',
   });
+  const [ollamaInfo, setOllamaInfo] = useState<AiDetectResult | null>(null);
+  const [selectedOllamaModel, setSelectedOllamaModel] = useState('');
+  const [applyingOllama, setApplyingOllama] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -37,6 +41,28 @@ export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
     return () => {
       active = false;
       window.clearInterval(timer);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    void apiClient
+      .detectOllama()
+      .then((res) => {
+        if (!active) return;
+        if (res.ollamaDetected && res.models.length > 0) {
+          setOllamaInfo(res);
+          setSelectedOllamaModel(res.models[0] ?? '');
+        } else {
+          setOllamaInfo(null);
+        }
+      })
+      .catch(() => {
+        if (active) setOllamaInfo(null);
+      });
+    return () => {
+      active = false;
     };
   }, [open]);
 
@@ -65,6 +91,22 @@ export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
   const handleComplete = async () => {
     await apiClient.completeOnboarding(false);
     onCompleted();
+  };
+
+  const handleUseOllama = async () => {
+    if (!ollamaInfo || !selectedOllamaModel) return;
+    setApplyingOllama(true);
+    try {
+      await apiClient.patchSettings({
+        aiProvider: 'ollama',
+        aiEndpoint: ollamaInfo.endpoint,
+        aiModel: selectedOllamaModel,
+      });
+      await apiClient.completeOnboarding(false);
+      onCompleted();
+    } finally {
+      setApplyingOllama(false);
+    }
   };
 
   const mbDownloaded = (state.downloadedBytes / 1_000_000).toFixed(0);
@@ -124,6 +166,61 @@ export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
             </p>
           </div>
         </div>
+
+        {ollamaInfo && ollamaInfo.ollamaDetected && ollamaInfo.models.length > 0 && (
+          <div
+            data-testid="ollama-detected-banner"
+            style={{
+              background: 'rgba(182, 242, 58, 0.1)',
+              border: '1px solid rgba(182, 242, 58, 0.3)',
+              borderRadius: '14px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}
+          >
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#B6F23A' }}>
+              Ollama detectado en tu equipo ({ollamaInfo.models.length}{' '}
+              {ollamaInfo.models.length === 1 ? 'modelo' : 'modelos'})
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <select
+                data-testid="ollama-model-select"
+                value={selectedOllamaModel}
+                onChange={(e) => setSelectedOllamaModel(e.target.value)}
+                aria-label="Seleccionar modelo de Ollama"
+                className="input mono"
+                style={{ flex: 1, fontSize: '12px' }}
+              >
+                {ollamaInfo.models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                data-testid="use-ollama-btn"
+                disabled={applyingOllama}
+                onClick={() => void handleUseOllama()}
+                style={{
+                  background: '#B6F23A',
+                  color: '#0B0B0D',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '7px 12px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {applyingOllama ? 'Conectando...' : 'Usar Ollama'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div
           style={{

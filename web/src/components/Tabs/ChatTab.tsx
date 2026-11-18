@@ -17,6 +17,9 @@ const TOOL_LABELS: Record<string, string> = {
   launch_app: 'Aplicación abierta',
   app_blocked: 'Acción bloqueada por seguridad',
   sleep: 'Modo descanso activado',
+  weather_query: 'Clima consultado',
+  web_search: 'Búsqueda web',
+  telegram_send: 'Mensaje de Telegram',
 };
 
 export function ChatTab({ messages, onSendCommand, onRefreshAll }: ChatTabProps) {

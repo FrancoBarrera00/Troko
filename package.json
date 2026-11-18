@@ -12,14 +12,49 @@
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c blue,green \"npm --workspace=server run dev\" \"npm --workspace=web run dev\"",
-    "typecheck": "npm --workspace=server run typecheck && npm --workspace=web run typecheck",
+    "typecheck": "npm --workspace=server run typecheck && npm --workspace=web run typecheck && npm --prefix electron run typecheck",
     "build": "npm --workspace=server run build && npm --workspace=web run build",
     "start": "npm --workspace=server run start",
     "test": "npm --workspace=server run test",
-    "test:e2e": "npm --prefix e2e test"
+    "test:e2e": "npm --prefix e2e test",
+    "electron:build": "npm run build && npm --prefix electron run build",
+    "electron:start": "npm run electron:build && electron electron/dist/main.js",
+    "electron:dev": "concurrently -n server,web,electron -c blue,green,magenta \"npm --workspace=server run dev\" \"npm --workspace=web run dev\" \"npm --prefix electron run dev\"",
+    "package:win": "npm run electron:build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.trokotec.trokodesk",
+    "productName": "Troko-Desk",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/dist/**/*",
+      "electron/assets/**/*",
+      "server/dist/**/*",
+      "web/dist/**/*",
+      "shared/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/dist/main.js"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "electron/assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "devDependencies": {
     "concurrently": "^10.0.7",
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0",
     "typescript": "^5.9.3"
   }
 }

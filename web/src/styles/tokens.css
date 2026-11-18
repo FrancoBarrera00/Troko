@@ -1223,3 +1223,13 @@ button {
     opacity: 1;
   }
 }
+
+/* ============================================================
+   Electron Transparent Notch Overlay Mode
+   ============================================================ */
+html.troko-electron,
+html.troko-electron body {
+  background: transparent !important;
+  overflow: hidden;
+}
+

@@ -2,13 +2,17 @@ import crypto from 'node:crypto';
 import type {
   ConversationMessage,
   InputMode,
+  IntegrationType,
   MessageRole,
   ModelDownloadStatus,
   TrokoMood,
 } from '../../../shared/types.ts';
 import type { TrokoDatabase } from '../db/database.ts';
 import type { EventBus } from '../eventBus.ts';
+import { AiProviderService } from './aiProvider.ts';
+import type { AiChatMessage } from './aiProvider.ts';
 import type { AppLauncherService } from './appLauncherService.ts';
+import { BridgeService } from './bridgeService.ts';
 import type { MailerService } from './mailerService.ts';
 import type { OrganizerService } from './organizerService.ts';
 import type { ProductivityService } from './productivityService.ts';
@@ -133,6 +137,8 @@ export class NluService {
   private readonly mailerService: MailerService;
   private readonly organizerService: OrganizerService;
   private readonly appLauncherService: AppLauncherService;
+  private readonly aiProvider: AiProviderService;
+  private readonly bridgeService: BridgeService;
 
   private downloadStatus: ModelDownloadStatus = 'idle';
   private progressPct = 0;
@@ -148,6 +154,8 @@ export class NluService {
     mailerService: MailerService;
     organizerService: OrganizerService;
     appLauncherService: AppLauncherService;
+    aiProvider?: AiProviderService;
+    bridgeService?: BridgeService;
   }) {
     this.db = deps.db;
     this.eventBus = deps.eventBus;
@@ -156,6 +164,16 @@ export class NluService {
     this.mailerService = deps.mailerService;
     this.organizerService = deps.organizerService;
     this.appLauncherService = deps.appLauncherService;
+    this.aiProvider = deps.aiProvider ?? new AiProviderService();
+    this.bridgeService = deps.bridgeService ?? new BridgeService();
+  }
+
+  private getIntegration(type: IntegrationType) {
+    return (
+      this.appLauncherService
+        .listIntegrations()
+        .find((item) => item.type === type) ?? null
+    );
   }
 
   stop(): void {
@@ -441,72 +459,24 @@ export class NluService {
     this.successResetTimer.unref();
   }
 
-  private async tryExternalProvider(userText: string): Promise<string | null> {
-    const settings = this.settingsService.getSettings();
-    if (settings.aiProvider === 'local_fallback') {
-      return null;
-    }
-    const baseEndpoint = settings.aiEndpoint.trim().replace(/\/+$/, '');
-    if (!baseEndpoint.startsWith('http://') && !baseEndpoint.startsWith('https://')) {
-      return null;
-    }
+  private getRecentHistory(
+    conversationId: string,
+    excludeMessageId: string,
+    limit = 6
+  ): AiChatMessage[] {
+    const rows = this.db.db
+      .prepare(
+        `SELECT role, content FROM messages
+         WHERE conversation_id = ? AND id != ? AND role IN ('user', 'assistant')
+         ORDER BY created_at DESC, rowid DESC
+         LIMIT ?`
+      )
+      .all(conversationId, excludeMessageId, limit) as Array<Record<string, unknown>>;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (settings.aiApiKey && settings.aiApiKey.trim().length > 0) {
-      headers['Authorization'] = `Bearer ${settings.aiApiKey.trim()}`;
-    }
-
-    const url = baseEndpoint.endsWith('/chat/completions')
-      ? baseEndpoint
-      : `${baseEndpoint}/v1/chat/completions`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    timeout.unref();
-
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: settings.aiModel || 'llama3.2:3b',
-          messages: [
-            {
-              role: 'system',
-              content:
-                'Eres Troko, un compañero de escritorio inteligente en español, conciso y amable.',
-            },
-            { role: 'user', content: userText },
-          ],
-          temperature: 0.4,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        return null;
-      }
-
-      const data = (await res.json()) as Record<string, unknown>;
-      const choices = data['choices'];
-      if (Array.isArray(choices) && choices.length > 0) {
-        const first = choices[0] as Record<string, unknown>;
-        const msg = first['message'] as Record<string, unknown> | undefined;
-        if (msg && typeof msg['content'] === 'string' && msg['content'].trim()) {
-          return msg['content'].trim();
-        }
-      }
-      if (typeof data['response'] === 'string' && data['response'].trim()) {
-        return data['response'].trim();
-      }
-      return null;
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timeout);
-    }
+    return rows.reverse().map((r) => ({
+      role: String(r['role']) as 'user' | 'assistant',
+      content: String(r['content']),
+    }));
   }
 
   async processUserMessage(
@@ -705,11 +675,155 @@ export class NluService {
         });
       }
     }
-    // 8. Conversational / Emotional / BYOK
+    // 8. Weather query ("¿Qué clima hace en Madrid?" / "Clima en Buenos Aires" / "Temperatura")
+    else if (
+      /(?:^(?:troko[,\s]+)?(?:¿?\s*(?:qu[eé]|cu[aá]l|c[oó]mo\s+est[aá])|dime|consulta(?:r)?|ver)\s+(?:el\s+|la\s+)?(?:clima|tiempo|temperatura|pron[oó]stico))|(?:\b(?:clima|pron[oó]stico|temperatura)\s+(?:en|de)\s+)|(?:^(?:troko[,\s]+)?(?:clima|temperatura|pron[oó]stico)(?:\s+en\s+|\s+de\s+|\s*$))/i.test(
+        trimmed
+      )
+    ) {
+      const weatherInt = this.getIntegration('weather');
+      const cityMatch =
+        /(?:en|de)\s+([a-záéíóúñü0-9\s,-]{2,60}?)(?:\?|\.|!|$)/i.exec(trimmed);
+      const configuredCity =
+        typeof weatherInt?.config['city'] === 'string' &&
+        weatherInt.config['city'].trim()
+          ? weatherInt.config['city'].trim()
+          : 'Madrid';
+      const city = cityMatch?.[1]?.trim() || configuredCity;
+      const units =
+        weatherInt?.config['units'] === 'imperial' ? 'imperial' : 'metric';
+
+      if (!weatherInt || !weatherInt.enabled) {
+        emotion = 'contento';
+        replyText =
+          'La integración de Clima está desactivada. Actívala en Ajustes para consultar el clima en vivo.';
+        toolAction = { type: 'weather_query', city, enabled: false };
+      } else {
+        const weatherRes = await this.bridgeService.getWeather(city, units);
+        emotion = weatherRes.ok ? 'contento' : 'molesto';
+        replyText = weatherRes.summary;
+        toolAction = {
+          type: 'weather_query',
+          city: weatherRes.city,
+          ok: weatherRes.ok,
+          ...(weatherRes.temperature !== undefined
+            ? { temperature: weatherRes.temperature, unitSymbol: weatherRes.unitSymbol }
+            : {}),
+          ...(weatherRes.error ? { error: weatherRes.error } : {}),
+        };
+      }
+      this.eventBus.setIslandState({
+        state: 'idle',
+        mood: emotion,
+        statusText: 'Reposo',
+      });
+    }
+    // 9. Tavily web search ("Busca noticias sobre IA" / "Investiga qué es Node 24")
+    else if (
+      /^(?:troko[,\s]+)?(?:busca(?:r)?|investiga(?:r)?)(?:\s+(?:en\s+(?:internet|la\s+web)|sobre))?\s+(.+)$/i.test(
+        trimmed
+      )
+    ) {
+      const m =
+        /^(?:troko[,\s]+)?(?:busca(?:r)?|investiga(?:r)?)(?:\s+(?:en\s+(?:internet|la\s+web)|sobre))?\s+(.+)$/i.exec(
+          trimmed
+        );
+      const query = (m?.[1] ?? '').trim().replace(/[.?!]+$/, '');
+      const tavilyInt = this.getIntegration('tavily');
+      const apiKey =
+        typeof tavilyInt?.config['apiKey'] === 'string'
+          ? tavilyInt.config['apiKey'].trim()
+          : '';
+
+      if (!tavilyInt || !tavilyInt.enabled || !apiKey) {
+        emotion = 'contento';
+        replyText =
+          'La búsqueda web con Tavily no está activa o falta su API Key. Configúrala y actívala en Ajustes.';
+        toolAction = { type: 'web_search', query, enabled: false };
+      } else {
+        const searchRes = await this.bridgeService.searchTavily(apiKey, query);
+        emotion = searchRes.ok ? 'contento' : 'molesto';
+        replyText = searchRes.summary;
+        toolAction = {
+          type: 'web_search',
+          query,
+          ok: searchRes.ok,
+          resultsCount: searchRes.results.length,
+          ...(searchRes.error ? { error: searchRes.error } : {}),
+        };
+      }
+      this.eventBus.setIslandState({
+        state: 'idle',
+        mood: emotion,
+        statusText: 'Reposo',
+      });
+    }
+    // 10. Telegram send ("Envía por telegram Hola equipo" / "Manda telegram Recordatorio")
+    else if (
+      /^(?:troko[,\s]+)?(?:env[ií]a(?:r)?|manda(?:r)?|escribe)\s+(?:un\s+)?(?:mensaje\s+)?(?:por\s+)?telegram(?:\s+(?:diciendo|que|:))?\s+(.+)$/i.test(
+        trimmed
+      )
+    ) {
+      const m =
+        /^(?:troko[,\s]+)?(?:env[ií]a(?:r)?|manda(?:r)?|escribe)\s+(?:un\s+)?(?:mensaje\s+)?(?:por\s+)?telegram(?:\s+(?:diciendo|que|:))?\s+(.+)$/i.exec(
+          trimmed
+        );
+      const messageText = (m?.[1] ?? '').trim();
+      const tgInt = this.getIntegration('telegram');
+      const botToken =
+        typeof tgInt?.config['botToken'] === 'string'
+          ? tgInt.config['botToken'].trim()
+          : '';
+      const chatId =
+        typeof tgInt?.config['chatId'] === 'string'
+          ? tgInt.config['chatId'].trim()
+          : '';
+
+      if (!tgInt || !tgInt.enabled || !botToken || !chatId) {
+        emotion = 'contento';
+        replyText =
+          'La integración de Telegram no está activa o faltan Bot Token y Chat ID. Configúrala y actívala en Ajustes.';
+        toolAction = { type: 'telegram_send', enabled: false };
+      } else {
+        const tgRes = await this.bridgeService.sendTelegramMessage(
+          botToken,
+          chatId,
+          messageText
+        );
+        emotion = tgRes.ok ? 'contento' : 'molesto';
+        replyText = tgRes.summary;
+        toolAction = {
+          type: 'telegram_send',
+          ok: tgRes.ok,
+          ...(tgRes.messageId !== undefined ? { messageId: tgRes.messageId } : {}),
+          ...(tgRes.error ? { error: tgRes.error } : {}),
+        };
+      }
+      this.eventBus.setIslandState({
+        state: 'idle',
+        mood: emotion,
+        statusText: 'Reposo',
+      });
+    }
+    // 11. Conversational / Emotional / BYOK
     else {
       emotion = detectEmotionFromText(trimmed);
-      const externalReply = await this.tryExternalProvider(trimmed);
-      replyText = externalReply ?? buildOfflineEmotionReply(emotion, trimmed);
+      const settings = this.settingsService.getSettings();
+      const history = this.getRecentHistory(userMessage.conversationId, userMessage.id, 6);
+      const aiResult = await this.aiProvider
+        .generateReply(settings, history, trimmed)
+        .catch(() => null);
+      if (aiResult) {
+        replyText = aiResult.reply;
+        if (aiResult.emotion) {
+          emotion = aiResult.emotion;
+        }
+        if (aiResult.intent) {
+          toolAction = { type: 'ai_intent', intent: aiResult.intent };
+        }
+      } else {
+        replyText = buildOfflineEmotionReply(emotion, trimmed);
+      }
       this.eventBus.setIslandState({
         state: 'idle',
         mood: emotion,

@@ -151,6 +151,23 @@ export interface AppSettings {
 
 export type SettingsPatch = Partial<AppSettings>;
 
+export interface AiDetectResult {
+  ollamaDetected: boolean;
+  endpoint: string;
+  models: string[];
+  error?: string;
+}
+
+export interface AiConnectionTestResult {
+  ok: boolean;
+  provider: AIProviderType;
+  endpoint: string;
+  model: string;
+  latencyMs: number;
+  replyPreview?: string;
+  error?: string;
+}
+
 // === Domain Models (1-to-1 with the 15 SQLite Tables) ===
 export interface Task {
   id: string;
