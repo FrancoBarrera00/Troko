@@ -10,16 +10,20 @@ import { registerCoreRoutes } from './routes/core.ts';
 import { registerHabitRoutes } from './routes/habits.ts';
 import { registerOsToolsRoutes } from './routes/osTools.ts';
 import { registerProductivityRoutes } from './routes/productivity.ts';
+import { registerStudyGuardianRoutes } from './routes/studyGuardian.ts';
 import { AiProviderService } from './services/aiProvider.ts';
 import { AppLauncherService } from './services/appLauncherService.ts';
 import { BridgeService } from './services/bridgeService.ts';
+import { GuardianService } from './services/guardianService.ts';
 import { HabitService } from './services/habitService.ts';
 import { MailerService } from './services/mailerService.ts';
 import { NluService } from './services/nluService.ts';
 import { NotesService } from './services/notesService.ts';
 import { OrganizerService } from './services/organizerService.ts';
 import { ProductivityService } from './services/productivityService.ts';
+import { ProgressionService } from './services/progressionService.ts';
 import { SettingsService } from './services/settingsService.ts';
+import { StudyService } from './services/studyService.ts';
 
 export class HttpError extends Error {
   readonly status: number;
@@ -200,6 +204,9 @@ export interface ServerContext {
   readonly aiProvider: AiProviderService;
   readonly nluService: NluService;
   readonly notesService: NotesService;
+  readonly progressionService: ProgressionService;
+  readonly guardianService: GuardianService;
+  readonly studyService: StudyService;
   readonly version: string;
   readonly startedAtMs: number;
   readonly getLooseDesktopFilesCount: () => Promise<number> | number;
@@ -316,6 +323,35 @@ export function createApp(config: AppConfig = {}): TrokoApp {
   const aiProvider = new AiProviderService();
   const bridgeService = new BridgeService();
   const notesService = new NotesService(dbPath, eventBus);
+  const progressionService = new ProgressionService(dbPath, eventBus);
+  const guardianService = new GuardianService(dbPath, eventBus, progressionService);
+  const studyService = new StudyService(
+    dbPath,
+    eventBus,
+    settingsService,
+    aiProvider,
+    progressionService
+  );
+
+  productivityService.setFocusHooks({
+    onFocusStarted: (phase) => {
+      if (phase === 'focus') {
+        guardianService.resetSession();
+      }
+    },
+    onFocusCompleted: (phase) => {
+      if (phase === 'focus') {
+        const clean = guardianService.getRuntime().sessionDistractions === 0;
+        const xp = clean ? 80 : 60;
+        progressionService.awardXp(
+          xp,
+          clean ? 'Bloque de enfoque limpio (con bonus)' : 'Bloque de enfoque completado',
+          { cleanFocusBlock: clean, resetFocusStreak: !clean }
+        );
+      }
+    },
+  });
+
   const nluService = new NluService({
     db,
     eventBus,
@@ -345,6 +381,9 @@ export function createApp(config: AppConfig = {}): TrokoApp {
     aiProvider,
     nluService,
     notesService,
+    progressionService,
+    guardianService,
+    studyService,
     version,
     startedAtMs: Date.now(),
     getLooseDesktopFilesCount:
@@ -356,6 +395,7 @@ export function createApp(config: AppConfig = {}): TrokoApp {
   registerHabitRoutes(router, ctx);
   registerAiRoutes(router, ctx);
   registerOsToolsRoutes(router, ctx);
+  registerStudyGuardianRoutes(router, ctx);
 
   const server = http.createServer(async (req, res) => {
     try {

@@ -95,6 +95,9 @@ export function registerHabitRoutes(router: Router, ctx: ServerContext): void {
   router.post('/api/habits/:id/increment', (req, res) => {
     const id = req.params['id'] ?? '';
     const habit = ctx.habitService.incrementHabit(id);
+    if (habit.todayProgress === habit.dailyGoal) {
+      ctx.progressionService.awardXp(20, `Hábito completado: ${habit.name}`);
+    }
     sendJson(res, 200, { ok: true, habit, ...habit });
   });
 

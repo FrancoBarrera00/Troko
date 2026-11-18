@@ -1,4 +1,5 @@
 import type {
+  AccessoryCatalogItem,
   AiConnectionTestResult,
   AiDetectResult,
   AppSettings,
@@ -6,17 +7,23 @@ import type {
   EmailMessage,
   FocusPhase,
   FocusSession,
+  GuardianConfig,
+  GuardianRuntimeStatus,
   Habit,
   HabitSceneId,
   IntegrationRecord,
   IslandStatusPayload,
   MemoryExportPayload,
+  ProgressionState,
   Reminder,
   ReminderRecurrence,
   SettingsPatch,
+  StudyDecodeProgress,
+  StudyDocument,
   SummarySnapshot,
   Task,
   Timer,
+  TrokoAccessoryId,
   TrokoMood,
 } from '../../../shared/types.ts';
 
@@ -676,6 +683,151 @@ export const apiClient = {
   },
   async deleteNote(id: string): Promise<void> {
     await requestJson(`/api/notes/${id}`, { method: 'DELETE' });
+  },
+
+  // Progression & Accessories
+  getProgression(): Promise<{
+    ok: true;
+    progression: ProgressionState;
+    catalog: AccessoryCatalogItem[];
+  }> {
+    return requestJson('/api/progression');
+  },
+  equipAccessory(accessory: TrokoAccessoryId): Promise<{
+    ok: true;
+    progression: ProgressionState;
+  }> {
+    return requestJson('/api/progression/equip', {
+      method: 'POST',
+      body: JSON.stringify({ accessory }),
+    });
+  },
+
+  // Focus Guardian
+  getGuardian(): Promise<{
+    ok: true;
+    config: GuardianConfig;
+    runtime: GuardianRuntimeStatus;
+  }> {
+    return requestJson('/api/guardian');
+  },
+  patchGuardian(patch: Partial<GuardianConfig>): Promise<{
+    ok: true;
+    config: GuardianConfig;
+    runtime: GuardianRuntimeStatus;
+  }> {
+    return requestJson('/api/guardian', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  },
+  checkGuardian(input: { windowTitle: string; elapsedHiddenSec?: number }): Promise<{
+    ok: true;
+    distracting: boolean;
+    triggered: boolean;
+    message?: string;
+    runtime: GuardianRuntimeStatus;
+  }> {
+    return requestJson('/api/guardian/check', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  testGuardianAlert(sampleTitle?: string): Promise<{
+    ok: true;
+    triggered: true;
+    message: string;
+    runtime: GuardianRuntimeStatus;
+  }> {
+    return requestJson('/api/guardian/test-alert', {
+      method: 'POST',
+      body: JSON.stringify(sampleTitle ? { sampleTitle } : {}),
+    });
+  },
+
+  // Study PDF & Lossless Block Decoder
+  getStudyDocs(): Promise<{
+    ok: true;
+    docs: StudyDocument[];
+    decodeStatus: StudyDecodeProgress;
+  }> {
+    return requestJson('/api/study/docs');
+  },
+  getStudyStatus(): Promise<{
+    ok: true;
+    decodeStatus: StudyDecodeProgress;
+  }> {
+    return requestJson('/api/study/status');
+  },
+  decodeStudyDocument(input: {
+    title?: string;
+    fileName?: string;
+    pdfBase64?: string;
+    text?: string;
+  }): Promise<{
+    ok: true;
+    doc: StudyDocument;
+    decodeStatus: StudyDecodeProgress;
+  }> {
+    return requestJson('/api/study/decode', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  deleteStudyDoc(id: string): Promise<{ ok: true }> {
+    return requestJson(`/api/study/docs/${id}`, { method: 'DELETE' });
+  },
+  masterStudyBlock(
+    docId: string,
+    blockId: string,
+    mastered = true
+  ): Promise<{
+    ok: true;
+    doc: StudyDocument;
+    xpEarned: number;
+    progression: ProgressionState;
+  }> {
+    return requestJson(`/api/study/docs/${docId}/blocks/${blockId}/master`, {
+      method: 'POST',
+      body: JSON.stringify({ mastered }),
+    });
+  },
+  answerStudyQuiz(
+    docId: string,
+    blockId: string,
+    questionId: string,
+    selectedIndex: number
+  ): Promise<{
+    ok: true;
+    correct: boolean;
+    correctIndex: number;
+    explanation: string;
+    xpEarned: number;
+    doc: StudyDocument;
+    progression: ProgressionState;
+  }> {
+    return requestJson(`/api/study/docs/${docId}/blocks/${blockId}/quiz`, {
+      method: 'POST',
+      body: JSON.stringify({ questionId, selectedIndex }),
+    });
+  },
+  evaluateStudyFeynman(
+    docId: string,
+    blockId: string,
+    explanation: string
+  ): Promise<{
+    ok: true;
+    scorePct: number;
+    feedback: string;
+    matchedConcepts: string[];
+    missingConcepts: string[];
+    xpEarned: number;
+    progression: ProgressionState;
+  }> {
+    return requestJson(`/api/study/docs/${docId}/blocks/${blockId}/feynman`, {
+      method: 'POST',
+      body: JSON.stringify({ explanation }),
+    });
   },
 
   // Memory Export & Wipe

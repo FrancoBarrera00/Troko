@@ -10,7 +10,7 @@ import { apiClient } from './api/client.ts';
 import { DesktopStage } from './components/DesktopStage/DesktopStage.tsx';
 import { IslandBar } from './components/Island/IslandBar.tsx';
 import { BienvenidaModal } from './components/Tabs/BienvenidaModal.tsx';
-import { TrokoAvatar } from './components/TrokoAvatar/TrokoAvatar.tsx';
+import { TrokoAccessoryContext, TrokoAvatar } from './components/TrokoAvatar/TrokoAvatar.tsx';
 import { useGazeTracking } from './hooks/useGazeTracking.ts';
 import { useTrokoEvents } from './hooks/useTrokoEvents.ts';
 import { useVoiceAudio } from './hooks/useVoiceAudio.ts';
@@ -81,6 +81,12 @@ export function App() {
     integrations,
     launchedApps,
     onboarding,
+    progression,
+    accessoryCatalog,
+    guardianConfig,
+    guardianRuntime,
+    studyDocs,
+    studyDecodeStatus,
     lastFocusTick,
     settingsSaving,
     settingsSavedAt,
@@ -99,6 +105,7 @@ export function App() {
   const [isPinned, setIsPinned] = useState(false);
   const [isPeeking, setIsPeeking] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('inicio');
+  const [enfoqueSubTab, setEnfoqueSubTab] = useState<'focus' | 'study'>('focus');
   const [showNotchHint, setShowNotchHint] = useState(true);
   const [isExited, setIsExited] = useState(false);
   const [activeAppWindow, setActiveAppWindow] = useState<string | null>(null);
@@ -302,6 +309,66 @@ export function App() {
       }
     }
   }, [timers, playChime]);
+
+  const hiddenSinceMsRef = useRef<number | null>(null);
+  useEffect(() => {
+    const focusActive = focusState?.status === 'active' && focusState?.phase === 'focus';
+    if (!focusActive || !guardianConfig?.enabled) {
+      hiddenSinceMsRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    const checkGuardianTick = async () => {
+      if (cancelled) return;
+      try {
+        const electronBridge = window.trokoElectron;
+        if (electronBridge?.getActiveWindow) {
+          const active = await electronBridge.getActiveWindow();
+          if (active?.title) {
+            const res = await apiClient.checkGuardian({ windowTitle: active.title });
+            if (res.triggered && res.message) {
+              playChimeRef.current('remind');
+              speakRef.current(res.message);
+              electronBridge.notify?.('Guardián de Enfoque · Troko', res.message);
+              void refreshAll();
+            }
+          }
+          return;
+        }
+
+        if (document.hidden) {
+          if (hiddenSinceMsRef.current === null) {
+            hiddenSinceMsRef.current = Date.now();
+          }
+          const elapsedHiddenSec = Math.round((Date.now() - hiddenSinceMsRef.current) / 1000);
+          const res = await apiClient.checkGuardian({
+            windowTitle: 'Otra pestaña del navegador (fuera de estudio)',
+            elapsedHiddenSec,
+          });
+          if (res.triggered && res.message) {
+            playChimeRef.current('remind');
+            speakRef.current(res.message);
+            void refreshAll();
+          }
+        } else if (hiddenSinceMsRef.current !== null) {
+          hiddenSinceMsRef.current = null;
+          await apiClient.checkGuardian({ windowTitle: 'Troko Estudio' });
+        }
+      } catch {
+        // Ignore transient guardian polling errors
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void checkGuardianTick();
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [focusState?.status, focusState?.phase, guardianConfig?.enabled, refreshAll]);
 
   const handleTriggerClick = (): void => {
     setShowNotchHint(false);
@@ -533,7 +600,7 @@ export function App() {
   }, [isElectron, showOnboarding]);
 
   return (
-    <>
+    <TrokoAccessoryContext.Provider value={progression?.equippedAccessory ?? 'none'}>
       {!isExited && (
         <IslandBar
           status={effectiveStatus}
@@ -541,6 +608,7 @@ export function App() {
           isPinned={isPinned}
           isPeeking={isPeeking}
           activeTab={activeTab}
+          enfoqueSubTab={enfoqueSubTab}
           summary={summary}
           settings={settings}
           settingsSaving={settingsSaving}
@@ -557,12 +625,19 @@ export function App() {
           desktopScan={desktopScan}
           integrations={integrations}
           launchedApps={launchedApps}
+          progression={progression}
+          accessoryCatalog={accessoryCatalog}
+          guardianConfig={guardianConfig}
+          guardianRuntime={guardianRuntime}
+          studyDocs={studyDocs}
+          studyDecodeStatus={studyDecodeStatus}
           registerHead={registerHead}
           onTriggerClick={handleTriggerClick}
           onHoverOpen={handleHoverOpen}
           onHoverClose={handleHoverClose}
           onClose={handleClose}
           onSelectTab={setActiveTab}
+          onSelectEnfoqueSubTab={setEnfoqueSubTab}
           onUpdateSettings={updateSettings}
           onQuickListen={handleQuickListen}
           onQuitTroko={handleQuitTroko}
@@ -663,7 +738,7 @@ export function App() {
           </div>
         </div>
       )}
-    </>
+    </TrokoAccessoryContext.Provider>
   );
 }
 

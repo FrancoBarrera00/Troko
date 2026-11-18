@@ -22,7 +22,11 @@
     - Tool-calling estructurado con IA local/BYOK (`create_task`, `create_reminder`, `start_focus`, `create_timer`, `log_habit`).
   - **Tareas**: lista de tareas, recordatorios únicos/recurrentes y temporizadores con cuenta regresiva en vivo vía SSE.
   - **Hábitos**: rachas, anillos semanales (`S D L M X J V`) y **15 escenas SVG animadas**.
-  - **Enfoque**: temporizador Pomodoro 25/5 con anillo circular SVG, ciclo de 4 bloques y estadísticas de 7 días.
+  - **Enfoque, Guardián Real y Estudio PDF**:
+    - Temporizador Pomodoro 25/5 con anillo circular SVG, ciclo de 4 bloques y estadísticas de 7 días.
+    - **Guardián Real de Enfoque**: supervisa la ventana activa durante el Pomodoro contra lista negra (`YouTube`, `Twitch`, `Instagram`, etc.) o lista blanca ("Solo estudio") con tiempo de gracia editable, alertas de Troko y racha limpia.
+    - **Estudio PDF & Bloques sin pérdida**: extrae `.pdf` o resúmenes largos en bloques estructurados sin recortar texto, con mapa de ideas clave, audio TTS (`Escuchar bloque`), quiz Active Recall y explicación Feynman.
+    - **Nivel, XP y Accesorios**: cada bloque de enfoque limpio, bloque estudiado, quiz y hábito suma XP, sube de nivel y desbloquea accesorios SVG equipables (`Lentes de estudio`, `Auriculares`, `Vincha Dojo`, `Corona dorada`, `Aura neón`) sobre `TrokoAvatar`.
   - **Correo**: bandeja IMAP/SMTP opcional y redacción de borradores con confirmación explícita antes de enviar.
   - **Mi Mac / Mi Equipo**: clasificador de archivos sueltos en 8 categorías con vista previa, confirmación obligatoria y deshacer atómico (`Deshacer`), lanzador con lista blanca, **Monitor del Sistema** (CPU/RAM/actividad) y **Bloc rápido (Apuntes locales)**.
   - **Ajustes y Modo Compañero Electron**: proveedor IA local (autodetección de Ollama) o BYOK, selector rápido de Escritorio real vs. Sandbox, permisos de micrófono/notificaciones nativas, atajo global (`Alt+Espacio` en Windows/Linux, `Option+Espacio` en macOS), inicio automático con el sistema, sonido Web Audio y bandeja del sistema (`electron/`).

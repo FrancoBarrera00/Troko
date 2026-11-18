@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  AccessoryCatalogItem,
   AppSettings,
   EmailDraft,
   EmailMessage,
+  GuardianConfig,
+  GuardianRuntimeStatus,
   IntegrationRecord,
   IslandStatusPayload,
+  ProgressionState,
   Reminder,
   ServerEvent,
   SettingsPatch,
+  StudyDecodeProgress,
+  StudyDocument,
   SummarySnapshot,
   Task,
   Timer,
@@ -57,6 +63,12 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
   const [integrations, setIntegrations] = useState<IntegrationRecord[]>([]);
   const [launchedApps, setLaunchedApps] = useState<Array<{ app: string; launchedAt: string }>>([]);
   const [onboarding, setOnboarding] = useState<OnboardingStateResponse | null>(null);
+  const [progression, setProgression] = useState<ProgressionState | null>(null);
+  const [accessoryCatalog, setAccessoryCatalog] = useState<AccessoryCatalogItem[]>([]);
+  const [guardianConfig, setGuardianConfig] = useState<GuardianConfig | null>(null);
+  const [guardianRuntime, setGuardianRuntime] = useState<GuardianRuntimeStatus | null>(null);
+  const [studyDocs, setStudyDocs] = useState<StudyDocument[]>([]);
+  const [studyDecodeStatus, setStudyDecodeStatus] = useState<StudyDecodeProgress | null>(null);
   const [lastFocusTick, setLastFocusTick] = useState<FocusTickSnapshot | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSavedAt, setSettingsSavedAt] = useState<number | null>(null);
@@ -99,6 +111,9 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
       intRes,
       appRes,
       onbRes,
+      prgRes,
+      grdRes,
+      stdRes,
     ] = await Promise.allSettled([
       apiClient.getSummary(),
       apiClient.getSettings(),
@@ -114,6 +129,9 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
       apiClient.listIntegrations(),
       apiClient.listApps(),
       apiClient.getOnboarding(),
+      apiClient.getProgression(),
+      apiClient.getGuardian(),
+      apiClient.getStudyDocs(),
     ]);
 
     if (sumRes.status === 'fulfilled') setSummary(sumRes.value);
@@ -135,6 +153,18 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
       setLaunchedApps(appRes.value.recentLaunches ?? []);
     }
     if (onbRes.status === 'fulfilled') setOnboarding(onbRes.value);
+    if (prgRes.status === 'fulfilled') {
+      setProgression(prgRes.value.progression);
+      setAccessoryCatalog(prgRes.value.catalog ?? []);
+    }
+    if (grdRes.status === 'fulfilled') {
+      setGuardianConfig(grdRes.value.config);
+      setGuardianRuntime(grdRes.value.runtime);
+    }
+    if (stdRes.status === 'fulfilled') {
+      setStudyDocs(stdRes.value.docs ?? []);
+      setStudyDecodeStatus(stdRes.value.decodeStatus ?? null);
+    }
   }, []);
 
   // Auto-reset `success` state back to `idle` after 2400ms in browser clock
@@ -243,6 +273,9 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
           onAlertSpeechRef.current?.(`Recuerda tu hábito: ${habitName}`);
           void refreshAll();
         } else if (evt.type === 'data.updated' || evt.type === 'desktop.changed') {
+          if (evt.payload?.['scope'] === 'study' && evt.payload?.['decodeProgress']) {
+            setStudyDecodeStatus(evt.payload['decodeProgress'] as StudyDecodeProgress);
+          }
           void refreshAll();
         }
       } catch {
@@ -302,6 +335,12 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
     integrations,
     launchedApps,
     onboarding,
+    progression,
+    accessoryCatalog,
+    guardianConfig,
+    guardianRuntime,
+    studyDocs,
+    studyDecodeStatus,
     lastFocusTick,
     settingsSaving,
     settingsSavedAt,

@@ -1,10 +1,13 @@
-import { useEffect, useId, useRef } from 'react';
-import type { IslandState, TrokoMood } from '../../../../shared/types.ts';
+import { createContext, useContext, useEffect, useId, useRef } from 'react';
+import type { IslandState, TrokoAccessoryId, TrokoMood } from '../../../../shared/types.ts';
+
+export const TrokoAccessoryContext = createContext<TrokoAccessoryId>('none');
 
 export interface TrokoAvatarProps {
   size?: 'sm' | 'lg' | 'xl';
   mood: TrokoMood;
   state: IslandState;
+  accessory?: TrokoAccessoryId;
   registerHead?: (el: SVGSVGElement | null) => () => void;
   className?: string;
 }
@@ -22,9 +25,12 @@ export function TrokoAvatar({
   size = 'sm',
   mood,
   state,
+  accessory,
   registerHead,
   className = '',
 }: TrokoAvatarProps) {
+  const ctxAccessory = useContext(TrokoAccessoryContext);
+  const activeAccessory: TrokoAccessoryId = accessory ?? ctxAccessory ?? 'none';
   const uid = useId().replace(/:/g, '');
   const gradId = `tk-grad-${uid}`;
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -40,7 +46,7 @@ export function TrokoAvatar({
   return (
     <svg
       ref={svgRef}
-      viewBox="-6 -8 112 82"
+      viewBox="-6 -14 112 88"
       width={dims.width}
       height={dims.height}
       aria-hidden="true"
@@ -48,6 +54,7 @@ export function TrokoAvatar({
       data-mood={mood}
       data-state={state}
       data-expression={activeExpression}
+      data-accessory={activeAccessory}
       className={`troko ${className}`.trim()}
     >
       <defs>
@@ -531,6 +538,96 @@ export function TrokoAvatar({
             strokeWidth="2.6"
             strokeLinecap="round"
             strokeLinejoin="round"
+          />
+        </g>
+      )}
+
+      {/* Unlockable Accessories */}
+      {activeAccessory === 'glasses' && (
+        <g className="troko__accessory" data-layer="accessory-glasses">
+          <rect
+            x="26"
+            y="24"
+            width="21"
+            height="16"
+            rx="5"
+            fill="rgba(88, 178, 255, 0.16)"
+            stroke="#141414"
+            strokeWidth="2.4"
+          />
+          <rect
+            x="53"
+            y="24"
+            width="21"
+            height="16"
+            rx="5"
+            fill="rgba(88, 178, 255, 0.16)"
+            stroke="#141414"
+            strokeWidth="2.4"
+          />
+          <path d="M47 31H53M21 30L26 31M74 31L79 30" stroke="#141414" strokeWidth="2.2" strokeLinecap="round" />
+        </g>
+      )}
+
+      {activeAccessory === 'headphones' && (
+        <g className="troko__accessory" data-layer="accessory-headphones">
+          <path
+            d="M14 28C16 4 84 4 86 28"
+            fill="none"
+            stroke="#8B5CF6"
+            strokeWidth="4.2"
+            strokeLinecap="round"
+          />
+          <rect x="6" y="24" width="9" height="19" rx="4.5" fill="#1E1E24" stroke="#B6F23A" strokeWidth="1.8" />
+          <rect x="85" y="24" width="9" height="19" rx="4.5" fill="#1E1E24" stroke="#B6F23A" strokeWidth="1.8" />
+        </g>
+      )}
+
+      {activeAccessory === 'headband' && (
+        <g className="troko__accessory" data-layer="accessory-headband">
+          <path
+            d="M17 14Q50 18 83 14L81 20Q50 24 19 20Z"
+            fill="#FF5A5F"
+            stroke="#141414"
+            strokeWidth="1.1"
+          />
+          <circle cx="77" cy="17" r="3" fill="#F5A623" />
+        </g>
+      )}
+
+      {activeAccessory === 'crown' && (
+        <g className="troko__accessory" data-layer="accessory-crown">
+          <path
+            d="M33 4L36 -8L44 -1L50 -10L56 -1L64 -8L67 4Z"
+            fill="#F5A623"
+            stroke="#141414"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+          <circle cx="50" cy="-2" r="2" fill="#FF5A5F" />
+        </g>
+      )}
+
+      {activeAccessory === 'halo' && (
+        <g className="troko__accessory" data-layer="accessory-halo">
+          <ellipse
+            cx="50"
+            cy="-7"
+            rx="22"
+            ry="4.5"
+            fill="none"
+            stroke="#B6F23A"
+            strokeWidth="2.8"
+          />
+          <ellipse
+            cx="50"
+            cy="-7"
+            rx="22"
+            ry="4.5"
+            fill="none"
+            stroke="#58B2FF"
+            strokeWidth="1.2"
+            opacity="0.7"
           />
         </g>
       )}

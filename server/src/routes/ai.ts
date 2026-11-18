@@ -79,6 +79,9 @@ export function registerAiRoutes(router: Router, ctx: ServerContext): void {
     ctx.nluService.resetState();
     ctx.appLauncherService.resetState();
     ctx.notesService.clearNotes();
+    ctx.progressionService.wipe();
+    ctx.guardianService.wipe();
+    ctx.studyService.wipe();
     ctx.eventBus.setIslandState({
       state: 'idle',
       mood: 'contento',

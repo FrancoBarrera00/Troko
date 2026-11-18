@@ -1,15 +1,26 @@
 import { CheckCircle2, Crosshair, Mic } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type {
+  AccessoryCatalogItem,
   AppSettings,
+  EmailDraft,
+  EmailMessage,
+  GuardianConfig,
+  GuardianRuntimeStatus,
+  IntegrationRecord,
   IslandStatusPayload,
   PeekCard,
+  ProgressionState,
+  Reminder,
   SettingsPatch,
+  StudyDecodeProgress,
+  StudyDocument,
   SummarySnapshot,
   TabId,
+  Task,
+  Timer,
 } from '../../../../shared/types.ts';
 import type { ChatMessageItem, DesktopScanResponse, FocusStateResponse, HabitWithProgress } from '../../api/client.ts';
-import type { EmailDraft, EmailMessage, IntegrationRecord, Reminder, Task, Timer } from '../../../../shared/types.ts';
 import { TrokoAvatar } from '../TrokoAvatar/TrokoAvatar.tsx';
 import { IslandPanel } from './IslandPanel.tsx';
 
@@ -19,6 +30,7 @@ export interface IslandBarProps {
   isPinned: boolean;
   isPeeking: boolean;
   activeTab: TabId;
+  enfoqueSubTab?: 'focus' | 'study';
   summary: SummarySnapshot | null;
   settings: AppSettings | null;
   settingsSaving: boolean;
@@ -35,12 +47,19 @@ export interface IslandBarProps {
   desktopScan: DesktopScanResponse | null;
   integrations: IntegrationRecord[];
   launchedApps: Array<{ app: string; launchedAt: string }>;
+  progression: ProgressionState | null;
+  accessoryCatalog: AccessoryCatalogItem[];
+  guardianConfig: GuardianConfig | null;
+  guardianRuntime: GuardianRuntimeStatus | null;
+  studyDocs: StudyDocument[];
+  studyDecodeStatus: StudyDecodeProgress | null;
   registerHead: (el: SVGSVGElement | null) => () => void;
   onTriggerClick: () => void;
   onHoverOpen: () => void;
   onHoverClose: () => void;
   onClose: () => void;
   onSelectTab: (tab: TabId) => void;
+  onSelectEnfoqueSubTab?: (sub: 'focus' | 'study') => void;
   onUpdateSettings: (patch: SettingsPatch & Record<string, unknown>) => Promise<void>;
   onQuickListen: () => void;
   onQuitTroko: () => void;
@@ -125,6 +144,7 @@ export function IslandBar({
   isPinned,
   isPeeking,
   activeTab,
+  enfoqueSubTab,
   summary,
   settings,
   settingsSaving,
@@ -141,12 +161,19 @@ export function IslandBar({
   desktopScan,
   integrations,
   launchedApps,
+  progression,
+  accessoryCatalog,
+  guardianConfig,
+  guardianRuntime,
+  studyDocs,
+  studyDecodeStatus,
   registerHead,
   onTriggerClick,
   onHoverOpen,
   onHoverClose,
   onClose,
   onSelectTab,
+  onSelectEnfoqueSubTab,
   onUpdateSettings,
   onQuickListen,
   onQuitTroko,
@@ -499,6 +526,7 @@ export function IslandBar({
       <IslandPanel
         status={status}
         activeTab={activeTab}
+        enfoqueSubTab={enfoqueSubTab}
         summary={summary}
         settings={settings}
         settingsSaving={settingsSaving}
@@ -515,8 +543,15 @@ export function IslandBar({
         desktopScan={desktopScan}
         integrations={integrations}
         launchedApps={launchedApps}
+        progression={progression}
+        accessoryCatalog={accessoryCatalog}
+        guardianConfig={guardianConfig}
+        guardianRuntime={guardianRuntime}
+        studyDocs={studyDocs}
+        studyDecodeStatus={studyDecodeStatus}
         registerHead={registerHead}
         onSelectTab={onSelectTab}
+        onSelectEnfoqueSubTab={onSelectEnfoqueSubTab}
         onUpdateSettings={onUpdateSettings}
         onQuickListen={onQuickListen}
         onQuitTroko={onQuitTroko}

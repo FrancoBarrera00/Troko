@@ -11,7 +11,9 @@
     "start": "node dist/server/src/index.js",
     "test": "node --test tests/*.test.ts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "unpdf": "^2.2.1"
+  },
   "devDependencies": {
     "@types/node": "^24.19.2"
   }

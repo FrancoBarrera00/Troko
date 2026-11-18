@@ -373,3 +373,101 @@ export interface MemoryExportPayload {
   modelDownloads: ModelDownload[];
   integrations: IntegrationRecord[];
 }
+
+// === Round 5: Progression / Accessories, Focus Guardian & PDF Study Blocks ===
+export const TROKO_ACCESSORY_IDS = [
+  'none',
+  'glasses',
+  'headphones',
+  'headband',
+  'crown',
+  'halo',
+] as const;
+export type TrokoAccessoryId = (typeof TROKO_ACCESSORY_IDS)[number];
+
+export interface AccessoryCatalogItem {
+  id: TrokoAccessoryId;
+  name: string;
+  description: string;
+  minLevel: number;
+  unlocked: boolean;
+}
+
+export interface ProgressionState {
+  xp: number;
+  level: number;
+  levelTitle: string;
+  xpIntoLevel: number;
+  xpForNextLevel: number;
+  progressPct: number;
+  focusStreakBlocks: number;
+  totalFocusCleanBlocks: number;
+  totalStudyBlocksMastered: number;
+  totalQuizzesCorrect: number;
+  equippedAccessory: TrokoAccessoryId;
+  unlockedAccessories: TrokoAccessoryId[];
+  lastRewardReason?: string;
+}
+
+export type GuardianMode = 'blacklist' | 'whitelist';
+
+export interface GuardianConfig {
+  enabled: boolean;
+  mode: GuardianMode;
+  distractionKeywords: string[];
+  allowedKeywords: string[];
+  graceSec: number;
+}
+
+export interface GuardianRuntimeStatus {
+  sessionDistractions: number;
+  lastDetectedTitle: string | null;
+  lastDistractionTitle: string | null;
+  lastAlertAt: string | null;
+  distractedSeconds: number;
+  isCurrentlyDistracted: boolean;
+}
+
+export interface StudyQuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  answeredCorrectly?: boolean;
+}
+
+export interface StudyBlock {
+  id: string;
+  index: number;
+  title: string;
+  pageRange: string;
+  fullText: string;
+  keyPoints: string[];
+  estimatedReadSec: number;
+  quizQuestions: StudyQuizQuestion[];
+  mastered: boolean;
+  masteredAt: string | null;
+}
+
+export interface StudyDocument {
+  id: string;
+  title: string;
+  sourceType: 'pdf' | 'text';
+  fileName: string | null;
+  totalPages: number;
+  totalChars: number;
+  blocks: StudyBlock[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudyDecodeProgress {
+  active: boolean;
+  stage: 'idle' | 'extracting' | 'chunking' | 'enriching' | 'done' | 'error';
+  message: string;
+  currentBlock: number;
+  totalBlocks: number;
+  totalPages: number;
+}
+

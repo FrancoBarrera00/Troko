@@ -11,13 +11,19 @@ import {
 } from 'lucide-react';
 import { useRef } from 'react';
 import type {
+  AccessoryCatalogItem,
   AppSettings,
   EmailDraft,
   EmailMessage,
+  GuardianConfig,
+  GuardianRuntimeStatus,
   IntegrationRecord,
   IslandStatusPayload,
+  ProgressionState,
   Reminder,
   SettingsPatch,
+  StudyDecodeProgress,
+  StudyDocument,
   SummarySnapshot,
   TabId,
   Task,
@@ -42,6 +48,7 @@ import { TrokoAvatar } from '../TrokoAvatar/TrokoAvatar.tsx';
 export interface IslandPanelProps {
   status: IslandStatusPayload;
   activeTab: TabId;
+  enfoqueSubTab?: 'focus' | 'study';
   summary: SummarySnapshot | null;
   settings: AppSettings | null;
   settingsSaving: boolean;
@@ -58,8 +65,15 @@ export interface IslandPanelProps {
   desktopScan: DesktopScanResponse | null;
   integrations: IntegrationRecord[];
   launchedApps: Array<{ app: string; launchedAt: string }>;
+  progression: ProgressionState | null;
+  accessoryCatalog: AccessoryCatalogItem[];
+  guardianConfig: GuardianConfig | null;
+  guardianRuntime: GuardianRuntimeStatus | null;
+  studyDocs: StudyDocument[];
+  studyDecodeStatus: StudyDecodeProgress | null;
   registerHead: (el: SVGSVGElement | null) => () => void;
   onSelectTab: (tab: TabId) => void;
+  onSelectEnfoqueSubTab?: (sub: 'focus' | 'study') => void;
   onUpdateSettings: (patch: SettingsPatch & Record<string, unknown>) => Promise<void>;
   onQuickListen: () => void;
   onQuitTroko: () => void;
@@ -113,6 +127,7 @@ function formatMMSS(sec: number): string {
 export function IslandPanel({
   status,
   activeTab,
+  enfoqueSubTab,
   summary,
   settings,
   settingsSaving,
@@ -129,8 +144,15 @@ export function IslandPanel({
   desktopScan,
   integrations,
   launchedApps,
+  progression,
+  accessoryCatalog,
+  guardianConfig,
+  guardianRuntime,
+  studyDocs,
+  studyDecodeStatus,
   registerHead,
   onSelectTab,
+  onSelectEnfoqueSubTab,
   onUpdateSettings,
   onQuickListen,
   onQuitTroko,
@@ -306,7 +328,12 @@ export function IslandPanel({
                 reminders={reminders}
                 habits={habits}
                 focusState={focusState}
+                progression={progression}
                 onNavigateTab={onSelectTab}
+                onOpenStudy={() => {
+                  onSelectEnfoqueSubTab?.('study');
+                  onSelectTab('enfoque');
+                }}
                 onQuickListen={onQuickListen}
                 onSendCommand={onSendCommand}
                 onRefreshAll={onRefreshAll}
@@ -340,6 +367,14 @@ export function IslandPanel({
                 settings={settings}
                 summary={summary}
                 focusState={focusState}
+                progression={progression}
+                accessoryCatalog={accessoryCatalog}
+                guardianConfig={guardianConfig}
+                guardianRuntime={guardianRuntime}
+                studyDocs={studyDocs}
+                studyDecodeStatus={studyDecodeStatus}
+                subTab={enfoqueSubTab}
+                onChangeSubTab={onSelectEnfoqueSubTab}
                 onRefreshAll={onRefreshAll}
               />
             )}

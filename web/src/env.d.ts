@@ -18,6 +18,7 @@ export interface TrokoElectronBridge {
   notify?: (title: string, body: string) => void;
   openExternal?: (url: string) => Promise<boolean>;
   onSummoned?: (listener: () => void) => () => void;
+  getActiveWindow?: () => Promise<{ title: string } | null>;
 }
 
 declare global {

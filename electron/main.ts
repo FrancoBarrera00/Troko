@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -20,7 +21,65 @@ export const TROKO_DESKTOP_IPC_CHANNELS = {
   NOTIFY: 'troko:notify',
   OPEN_EXTERNAL: 'troko:open-external',
   SUMMONED: 'troko:summoned',
+  GET_ACTIVE_WINDOW: 'troko:get-active-window',
 } as const;
+
+function execFileTrimmed(cmd: string, args: string[], timeoutMs = 1500): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+      if (err) {
+        resolve('');
+        return;
+      }
+      resolve(String(stdout ?? '').trim());
+    });
+  });
+}
+
+export async function getActiveWindowTitle(): Promise<{ title: string } | null> {
+  try {
+    if (process.platform === 'win32') {
+      const psScript = [
+        'Add-Type @"',
+        'using System;using System.Runtime.InteropServices;using System.Text;',
+        'public class TrokoWin32{',
+        '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
+        '[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);',
+        '}',
+        '"@;',
+        '$h=[TrokoWin32]::GetForegroundWindow();',
+        '$sb=New-Object System.Text.StringBuilder 512;',
+        '[void][TrokoWin32]::GetWindowText($h,$sb,$sb.Capacity);',
+        '$sb.ToString()',
+      ].join(' ');
+      const title = await execFileTrimmed('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        psScript,
+      ]);
+      return title ? { title } : null;
+    }
+
+    if (process.platform === 'darwin') {
+      const title = await execFileTrimmed('osascript', [
+        '-e',
+        'tell application "System Events" to get name of first application process whose frontmost is true',
+      ]);
+      return title ? { title } : null;
+    }
+
+    if (process.platform === 'linux') {
+      const title = await execFileTrimmed('xdotool', ['getactivewindow', 'getwindowname']);
+      return title ? { title } : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 export function isSafeExternalUrl(rawUrl: string): boolean {
   try {
@@ -539,6 +598,10 @@ export async function bootElectronNotchShell(serverUrl?: string): Promise<void> 
       return true;
     }
     return false;
+  });
+
+  ipcMain.handle?.(TROKO_DESKTOP_IPC_CHANNELS.GET_ACTIVE_WINDOW, async () => {
+    return await getActiveWindowTitle();
   });
 
   app.on('will-quit', () => {

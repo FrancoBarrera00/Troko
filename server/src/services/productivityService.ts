@@ -139,6 +139,10 @@ export class ProductivityService {
   private tickInterval: NodeJS.Timeout | null = null;
   private reminderInterval: NodeJS.Timeout | null = null;
   private readyForBreak = false;
+  private focusHooks: {
+    onFocusStarted?: (phase: FocusPhase) => void;
+    onFocusCompleted?: (phase: FocusPhase) => void;
+  } = {};
 
   constructor(
     trokoDb: TrokoDatabase,
@@ -150,6 +154,13 @@ export class ProductivityService {
     this.settingsService = settingsService;
     this.recoverFocusStateOnStartup();
     this.startSchedulers();
+  }
+
+  setFocusHooks(hooks: {
+    onFocusStarted?: (phase: FocusPhase) => void;
+    onFocusCompleted?: (phase: FocusPhase) => void;
+  }): void {
+    this.focusHooks = hooks;
   }
 
   private recoverFocusStateOnStartup(): void {
@@ -771,6 +782,7 @@ export class ProductivityService {
       phase,
       label: label ?? undefined,
     });
+    this.focusHooks.onFocusStarted?.(phase);
     this.eventBus.publish('data.updated', { scope: 'focus', focusId: id });
     return this.getFocusState();
   }
@@ -877,6 +889,7 @@ export class ProductivityService {
     }
 
     const id = String(sessionRow['id']);
+    const phase = String(sessionRow['phase'] ?? 'focus') as FocusPhase;
     const now = new Date().toISOString();
     this.trokoDb.db
       .prepare(
@@ -892,6 +905,7 @@ export class ProductivityService {
       statusText: 'Reposo',
       peekCard: null,
     });
+    this.focusHooks.onFocusCompleted?.(phase);
     this.eventBus.publish('data.updated', { scope: 'focus', focusId: id });
     return this.getFocusState();
   }
@@ -982,6 +996,7 @@ export class ProductivityService {
           statusText: 'Listo',
           badgeWord: 'Enfoque listo',
         });
+        this.focusHooks.onFocusCompleted?.(f.phase);
         this.eventBus.publish('data.updated', { scope: 'focus', focusId: f.id });
       } else {
         this.trokoDb.db

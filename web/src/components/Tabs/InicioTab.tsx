@@ -1,6 +1,7 @@
-import { ArrowUp, Bell, CheckSquare, Crosshair, Droplets, Mic, Plus } from 'lucide-react';
+import { ArrowUp, Bell, BookOpen, CheckSquare, Crosshair, Droplets, Mic, Plus } from 'lucide-react';
 import { useState } from 'react';
 import type {
+  ProgressionState,
   Reminder,
   SummarySnapshot,
   TabId,
@@ -18,7 +19,9 @@ export interface InicioTabProps {
   reminders: Reminder[];
   habits: HabitWithProgress[];
   focusState: FocusStateResponse | null;
+  progression?: ProgressionState | null;
   onNavigateTab: (tab: TabId) => void;
+  onOpenStudy?: () => void;
   onQuickListen: () => void;
   onSendCommand: (text: string, inputMode?: 'text' | 'voice') => Promise<void>;
   onRefreshAll?: () => Promise<void>;
@@ -56,7 +59,9 @@ export function InicioTab({
   reminders,
   habits,
   focusState,
+  progression,
   onNavigateTab,
+  onOpenStudy,
   onQuickListen,
   onSendCommand,
   onRefreshAll,
@@ -114,15 +119,35 @@ export function InicioTab({
           <span className="eyebrow">{getSpanishDateLabel()}</span>
           <h2>{getSpanishGreeting()}</h2>
         </div>
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={onQuickListen}
-          data-testid="inicio-listen-btn"
-        >
-          <Mic size={14} />
-          <span>Hablar</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {progression && (
+            <button
+              type="button"
+              className="btn-ghost"
+              data-testid="inicio-level-badge"
+              onClick={() => onNavigateTab('enfoque')}
+              title={`${progression.levelTitle} · Racha limpia: ${progression.focusStreakBlocks}`}
+              style={{
+                fontSize: '11px',
+                padding: '5px 10px',
+                borderColor: 'rgba(182, 242, 58, 0.35)',
+                color: '#B6F23A',
+              }}
+            >
+              <span>Nv. {progression.level}</span>
+              <span className="mono">· {progression.xp} XP</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={onQuickListen}
+            data-testid="inicio-listen-btn"
+          >
+            <Mic size={14} />
+            <span>Hablar</span>
+          </button>
+        </div>
       </header>
 
       <div
@@ -314,6 +339,18 @@ export function InicioTab({
             <Mic size={12} />
             <span>Hablar</span>
           </button>
+          {onOpenStudy && (
+            <button
+              type="button"
+              className="btn-ghost"
+              data-testid="inicio-study-shortcut"
+              style={{ fontSize: '11px', padding: '4px 9px', borderColor: 'rgba(139, 92, 246, 0.45)' }}
+              onClick={onOpenStudy}
+            >
+              <BookOpen size={12} />
+              <span>Estudiar PDF</span>
+            </button>
+          )}
           {[
             'Enfócate 25 minutos',
             '¿Qué tengo hoy?',

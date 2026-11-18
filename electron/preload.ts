@@ -18,6 +18,7 @@ export interface TrokoElectronApi {
   notify: (title: string, body: string) => void;
   openExternal: (url: string) => Promise<boolean>;
   onSummoned: (listener: () => void) => () => void;
+  getActiveWindow: () => Promise<{ title: string } | null>;
 }
 
 const defaultHotkey = process.platform === 'darwin' ? 'Option+Space' : 'Alt+Space';
@@ -50,6 +51,8 @@ const trokoElectronApi: TrokoElectronApi = {
       ipcRenderer.off('troko:summoned', wrapped);
     };
   },
+  getActiveWindow: () =>
+    ipcRenderer.invoke('troko:get-active-window') as Promise<{ title: string } | null>,
 };
 
 contextBridge.exposeInMainWorld('trokoElectron', trokoElectronApi);
