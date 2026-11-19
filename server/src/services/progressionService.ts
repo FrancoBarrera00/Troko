@@ -1,37 +1,58 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  TROKO_ACCESSORY_IDS,
+  COMPANION_IDS,
+  NUKO_ACCESSORY_IDS,
   type AccessoryCatalogItem,
+  type CompanionId,
+  type CompanionProgressionMap,
+  type NukoAccessoryId,
   type ProgressionState,
-  type TrokoAccessoryId,
 } from '../../../shared/types.ts';
 import { HttpError } from '../app.ts';
 import type { EventBus } from '../eventBus.ts';
 
-interface StoredProgression {
+interface StoredCompanionProgression {
   xp: number;
   focusStreakBlocks: number;
   totalFocusCleanBlocks: number;
   totalStudyBlocksMastered: number;
   totalQuizzesCorrect: number;
-  equippedAccessory: TrokoAccessoryId;
+  equippedAccessory: NukoAccessoryId;
   lastRewardReason?: string;
+}
+
+interface StoredDualProgression {
+  activeCompanion: CompanionId;
+  companions: {
+    nuko: StoredCompanionProgression;
+    luma: StoredCompanionProgression;
+  };
 }
 
 const LEVEL_THRESHOLDS = [0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200] as const;
 
-const LEVEL_TITLES = [
-  'Aprendiz Curioso',
-  'Lector Ágil',
-  'Estudiante Enfocado',
-  'Maestro del Foco',
-  'Sabio Digital',
-  'Leyenda Troko',
-] as const;
+const LEVEL_TITLES_BY_COMPANION: Record<CompanionId, readonly string[]> = {
+  nuko: [
+    'Aprendiz Curioso',
+    'Lector Ágil',
+    'Estudiante Enfocado',
+    'Maestro del Foco',
+    'Sabio Digital',
+    'Leyenda Nuko',
+  ],
+  luma: [
+    'Chispa Curiosa',
+    'Luz de Lectura',
+    'Faro Enfocado',
+    'Maestro del Foco',
+    'Sabio Luminoso',
+    'Leyenda Luma',
+  ],
+};
 
 const BASE_ACCESSORIES: ReadonlyArray<{
-  id: TrokoAccessoryId;
+  id: NukoAccessoryId;
   name: string;
   description: string;
   minLevel: number;
@@ -39,7 +60,7 @@ const BASE_ACCESSORIES: ReadonlyArray<{
   {
     id: 'none',
     name: 'Clásico',
-    description: 'Estilo natural de Troko sin accesorios.',
+    description: 'Estilo natural sin accesorios.',
     minLevel: 1,
   },
   {
@@ -74,12 +95,16 @@ const BASE_ACCESSORIES: ReadonlyArray<{
   },
 ];
 
-function resolveStorePath(dbPath?: string): string | null {
-  if (!dbPath || dbPath === ':memory:') return null;
-  return path.join(path.dirname(path.resolve(dbPath)), 'troko-progression.json');
+function resolveStorePaths(dbPath?: string): { primary: string | null; legacy: string | null } {
+  if (!dbPath || dbPath === ':memory:') return { primary: null, legacy: null };
+  const dir = path.dirname(path.resolve(dbPath));
+  return {
+    primary: path.join(dir, 'nuko-progression.json'),
+    legacy: path.join(dir, 'troko-progression.json'),
+  };
 }
 
-function createInitialStore(): StoredProgression {
+function createInitialCompanionStore(): StoredCompanionProgression {
   return {
     xp: 0,
     focusStreakBlocks: 0,
@@ -90,7 +115,36 @@ function createInitialStore(): StoredProgression {
   };
 }
 
-function computeLevelInfo(xp: number): {
+function createInitialDualStore(): StoredDualProgression {
+  return {
+    activeCompanion: 'nuko',
+    companions: {
+      nuko: createInitialCompanionStore(),
+      luma: createInitialCompanionStore(),
+    },
+  };
+}
+
+function sanitizeCompanionStore(raw: unknown): StoredCompanionProgression {
+  if (typeof raw !== 'object' || raw === null) {
+    return createInitialCompanionStore();
+  }
+  const obj = raw as Partial<StoredCompanionProgression>;
+  const eq = NUKO_ACCESSORY_IDS.includes(obj.equippedAccessory as NukoAccessoryId)
+    ? (obj.equippedAccessory as NukoAccessoryId)
+    : 'none';
+  return {
+    xp: Math.max(0, Number(obj.xp ?? 0) || 0),
+    focusStreakBlocks: Math.max(0, Number(obj.focusStreakBlocks ?? 0) || 0),
+    totalFocusCleanBlocks: Math.max(0, Number(obj.totalFocusCleanBlocks ?? 0) || 0),
+    totalStudyBlocksMastered: Math.max(0, Number(obj.totalStudyBlocksMastered ?? 0) || 0),
+    totalQuizzesCorrect: Math.max(0, Number(obj.totalQuizzesCorrect ?? 0) || 0),
+    equippedAccessory: eq,
+    lastRewardReason: typeof obj.lastRewardReason === 'string' ? obj.lastRewardReason : undefined,
+  };
+}
+
+function computeLevelInfo(xp: number, companionId: CompanionId = 'nuko'): {
   level: number;
   levelTitle: string;
   xpIntoLevel: number;
@@ -106,93 +160,159 @@ function computeLevelInfo(xp: number): {
     }
   }
   const currentFloor = LEVEL_THRESHOLDS[level - 1] ?? 0;
-  const nextFloor =
-    LEVEL_THRESHOLDS[level] ?? currentFloor + 800;
+  const nextFloor = LEVEL_THRESHOLDS[level] ?? currentFloor + 800;
   const span = Math.max(1, nextFloor - currentFloor);
   const xpIntoLevel = Math.max(0, xp - currentFloor);
   const progressPct = Math.min(100, Math.round((xpIntoLevel / span) * 100));
-  const titleIdx = Math.min(LEVEL_TITLES.length - 1, level - 1);
+  const titles = LEVEL_TITLES_BY_COMPANION[companionId];
+  const titleIdx = Math.min(titles.length - 1, level - 1);
   return {
     level,
-    levelTitle: LEVEL_TITLES[titleIdx] ?? 'Leyenda Troko',
+    levelTitle: titles[titleIdx] ?? 'Leyenda Nuko',
     xpIntoLevel,
     xpForNextLevel: span,
     progressPct,
   };
 }
 
+function buildProgressionState(
+  stored: StoredCompanionProgression,
+  companionId: CompanionId
+): ProgressionState {
+  const lvl = computeLevelInfo(stored.xp, companionId);
+  const unlockedAccessories = BASE_ACCESSORIES.filter((a) => lvl.level >= a.minLevel).map(
+    (a) => a.id
+  );
+  const equipped = unlockedAccessories.includes(stored.equippedAccessory)
+    ? stored.equippedAccessory
+    : 'none';
+
+  return {
+    xp: stored.xp,
+    level: lvl.level,
+    levelTitle: lvl.levelTitle,
+    xpIntoLevel: lvl.xpIntoLevel,
+    xpForNextLevel: lvl.xpForNextLevel,
+    progressPct: lvl.progressPct,
+    focusStreakBlocks: stored.focusStreakBlocks,
+    totalFocusCleanBlocks: stored.totalFocusCleanBlocks,
+    totalStudyBlocksMastered: stored.totalStudyBlocksMastered,
+    totalQuizzesCorrect: stored.totalQuizzesCorrect,
+    equippedAccessory: equipped,
+    unlockedAccessories,
+    ...(stored.lastRewardReason ? { lastRewardReason: stored.lastRewardReason } : {}),
+  };
+}
+
 export class ProgressionService {
   private readonly filePath: string | null;
+  private readonly legacyPath: string | null;
   private readonly eventBus: EventBus;
-  private store: StoredProgression;
+  private store: StoredDualProgression;
 
   constructor(dbPath: string | undefined, eventBus: EventBus) {
-    this.filePath = resolveStorePath(dbPath);
+    const paths = resolveStorePaths(dbPath);
+    this.filePath = paths.primary;
+    this.legacyPath = paths.legacy;
     this.eventBus = eventBus;
     this.store = this.loadStore();
   }
 
-  private loadStore(): StoredProgression {
-    if (!this.filePath || !fs.existsSync(this.filePath)) {
-      return createInitialStore();
+  private loadStore(): StoredDualProgression {
+    let sourcePath: string | null = null;
+    if (this.filePath && fs.existsSync(this.filePath)) {
+      sourcePath = this.filePath;
+    } else if (this.legacyPath && fs.existsSync(this.legacyPath)) {
+      sourcePath = this.legacyPath;
+    }
+    if (!sourcePath) {
+      return createInitialDualStore();
     }
     try {
-      const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf8')) as Partial<StoredProgression>;
-      const eq = TROKO_ACCESSORY_IDS.includes(raw.equippedAccessory as TrokoAccessoryId)
-        ? (raw.equippedAccessory as TrokoAccessoryId)
-        : 'none';
-      return {
-        xp: Math.max(0, Number(raw.xp ?? 0) || 0),
-        focusStreakBlocks: Math.max(0, Number(raw.focusStreakBlocks ?? 0) || 0),
-        totalFocusCleanBlocks: Math.max(0, Number(raw.totalFocusCleanBlocks ?? 0) || 0),
-        totalStudyBlocksMastered: Math.max(0, Number(raw.totalStudyBlocksMastered ?? 0) || 0),
-        totalQuizzesCorrect: Math.max(0, Number(raw.totalQuizzesCorrect ?? 0) || 0),
-        equippedAccessory: eq,
-        lastRewardReason: typeof raw.lastRewardReason === 'string' ? raw.lastRewardReason : undefined,
+      const raw = JSON.parse(fs.readFileSync(sourcePath, 'utf8')) as Record<string, unknown>;
+      // New dual-companion format
+      if (raw['companions'] && typeof raw['companions'] === 'object') {
+        const comps = raw['companions'] as Record<string, unknown>;
+        const active: CompanionId = COMPANION_IDS.includes(raw['activeCompanion'] as CompanionId)
+          ? (raw['activeCompanion'] as CompanionId)
+          : 'nuko';
+        const loaded: StoredDualProgression = {
+          activeCompanion: active,
+          companions: {
+            nuko: sanitizeCompanionStore(comps['nuko']),
+            luma: sanitizeCompanionStore(comps['luma']),
+          },
+        };
+        if (sourcePath === this.legacyPath && this.filePath) {
+          this.saveDualStoreToDisk(loaded);
+        }
+        return loaded;
+      }
+
+      // Legacy flat format -> migrate into companions.nuko, initialize luma fresh
+      const migrated: StoredDualProgression = {
+        activeCompanion: 'nuko',
+        companions: {
+          nuko: sanitizeCompanionStore(raw),
+          luma: createInitialCompanionStore(),
+        },
       };
+      this.saveDualStoreToDisk(migrated);
+      return migrated;
     } catch {
-      return createInitialStore();
+      return createInitialDualStore();
     }
   }
 
-  private saveStore(): void {
+  private saveDualStoreToDisk(data: StoredDualProgression): void {
     if (!this.filePath) return;
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-      fs.writeFileSync(this.filePath, JSON.stringify(this.store, null, 2), 'utf8');
+      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf8');
     } catch {
       // Ignore write failures in read-only test paths
     }
   }
 
-  getState(): ProgressionState {
-    const lvl = computeLevelInfo(this.store.xp);
-    const unlockedAccessories = BASE_ACCESSORIES.filter((a) => lvl.level >= a.minLevel).map(
-      (a) => a.id
-    );
-    const equipped = unlockedAccessories.includes(this.store.equippedAccessory)
-      ? this.store.equippedAccessory
-      : 'none';
+  private saveStore(): void {
+    this.saveDualStoreToDisk(this.store);
+  }
 
+  getActiveCompanion(): CompanionId {
+    return this.store.activeCompanion;
+  }
+
+  setActiveCompanion(companion: CompanionId): CompanionId {
+    if (!COMPANION_IDS.includes(companion)) {
+      throw new HttpError(400, 'Compañero inválido: elegí nuko o luma.');
+    }
+    this.store.activeCompanion = companion;
+    this.saveStore();
+    this.eventBus.publish('data.updated', { scope: 'progression', activeCompanion: companion });
+    return this.store.activeCompanion;
+  }
+
+  getState(companionId?: CompanionId): ProgressionState {
+    const target = companionId ?? this.store.activeCompanion;
+    return buildProgressionState(this.store.companions[target], target);
+  }
+
+  getAllCompanions(): CompanionProgressionMap {
     return {
-      xp: this.store.xp,
-      level: lvl.level,
-      levelTitle: lvl.levelTitle,
-      xpIntoLevel: lvl.xpIntoLevel,
-      xpForNextLevel: lvl.xpForNextLevel,
-      progressPct: lvl.progressPct,
-      focusStreakBlocks: this.store.focusStreakBlocks,
-      totalFocusCleanBlocks: this.store.totalFocusCleanBlocks,
-      totalStudyBlocksMastered: this.store.totalStudyBlocksMastered,
-      totalQuizzesCorrect: this.store.totalQuizzesCorrect,
-      equippedAccessory: equipped,
-      unlockedAccessories,
-      ...(this.store.lastRewardReason ? { lastRewardReason: this.store.lastRewardReason } : {}),
+      nuko: buildProgressionState(this.store.companions.nuko, 'nuko'),
+      luma: buildProgressionState(this.store.companions.luma, 'luma'),
     };
   }
 
-  getCatalog(): AccessoryCatalogItem[] {
-    const { level } = this.getState();
+  getTotalCleanFocusBlocksAllCompanions(): number {
+    return (
+      this.store.companions.nuko.totalFocusCleanBlocks +
+      this.store.companions.luma.totalFocusCleanBlocks
+    );
+  }
+
+  getCatalog(companionId?: CompanionId): AccessoryCatalogItem[] {
+    const { level } = this.getState(companionId);
     return BASE_ACCESSORIES.map((item) => ({
       ...item,
       unlocked: level >= item.minLevel,
@@ -209,34 +329,35 @@ export class ProgressionService {
       quizCorrect?: boolean;
     }
   ): { state: ProgressionState; leveledUp: boolean; xpAdded: number } {
-    const prevLevel = this.getState().level;
+    const active = this.store.activeCompanion;
+    const compStore = this.store.companions[active];
+    const prevLevel = this.getState(active).level;
     const safeAmount = Math.max(0, Math.round(amount));
-    this.store.xp += safeAmount;
+    compStore.xp += safeAmount;
     if (safeAmount > 0) {
-      this.store.lastRewardReason = `${reason} (+${safeAmount} XP)`;
+      compStore.lastRewardReason = `${reason} (+${safeAmount} XP)`;
     }
 
     if (statsDelta?.resetFocusStreak) {
-      this.store.focusStreakBlocks = 0;
+      compStore.focusStreakBlocks = 0;
     } else if (statsDelta?.cleanFocusBlock) {
-      this.store.focusStreakBlocks += 1;
-      this.store.totalFocusCleanBlocks += 1;
+      compStore.focusStreakBlocks += 1;
+      compStore.totalFocusCleanBlocks += 1;
     }
     if (statsDelta?.studyBlockMastered) {
-      this.store.totalStudyBlocksMastered += 1;
+      compStore.totalStudyBlocksMastered += 1;
     }
     if (statsDelta?.quizCorrect) {
-      this.store.totalQuizzesCorrect += 1;
+      compStore.totalQuizzesCorrect += 1;
     }
 
-    const nextState = this.getState();
+    const nextState = this.getState(active);
     const leveledUp = nextState.level > prevLevel;
 
-    // Auto-equip newest unlock when leveling up from 'none' or celebrate
     if (leveledUp) {
       const newlyUnlocked = BASE_ACCESSORIES.find((a) => a.minLevel === nextState.level);
-      if (newlyUnlocked && this.store.equippedAccessory === 'none') {
-        this.store.equippedAccessory = newlyUnlocked.id;
+      if (newlyUnlocked && compStore.equippedAccessory === 'none') {
+        compStore.equippedAccessory = newlyUnlocked.id;
       }
       this.eventBus.setIslandState({
         state: 'success',
@@ -250,40 +371,43 @@ export class ProgressionService {
     this.saveStore();
     this.eventBus.publish('data.updated', { scope: 'progression' });
     return {
-      state: this.getState(),
+      state: this.getState(active),
       leveledUp,
       xpAdded: safeAmount,
     };
   }
 
   breakFocusStreak(): void {
-    if (this.store.focusStreakBlocks !== 0) {
-      this.store.focusStreakBlocks = 0;
+    const active = this.store.activeCompanion;
+    const compStore = this.store.companions[active];
+    if (compStore.focusStreakBlocks !== 0) {
+      compStore.focusStreakBlocks = 0;
       this.saveStore();
       this.eventBus.publish('data.updated', { scope: 'progression' });
     }
   }
 
-  equipAccessory(accessoryId: TrokoAccessoryId): ProgressionState {
-    if (!TROKO_ACCESSORY_IDS.includes(accessoryId)) {
+  equipAccessory(accessoryId: NukoAccessoryId): ProgressionState {
+    if (!NUKO_ACCESSORY_IDS.includes(accessoryId)) {
       throw new HttpError(400, `Accesorio desconocido: ${accessoryId}`);
     }
-    const state = this.getState();
+    const active = this.store.activeCompanion;
+    const state = this.getState(active);
     if (!state.unlockedAccessories.includes(accessoryId)) {
       const item = BASE_ACCESSORIES.find((a) => a.id === accessoryId);
       throw new HttpError(
         403,
-        `Necesitas alcanzar el Nivel ${item?.minLevel ?? 2} para desbloquear «${item?.name ?? accessoryId}».`
+        `Necesitás alcanzar el Nivel ${item?.minLevel ?? 2} con ${active === 'luma' ? 'Luma' : 'Nuko'} para desbloquear «${item?.name ?? accessoryId}».`
       );
     }
-    this.store.equippedAccessory = accessoryId;
+    this.store.companions[active].equippedAccessory = accessoryId;
     this.saveStore();
     this.eventBus.publish('data.updated', { scope: 'progression' });
-    return this.getState();
+    return this.getState(active);
   }
 
   wipe(): void {
-    this.store = createInitialStore();
+    this.store = createInitialDualStore();
     this.saveStore();
     this.eventBus.publish('data.updated', { scope: 'progression' });
   }

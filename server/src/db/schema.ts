@@ -3,7 +3,7 @@ import type { AppSettings } from '../../../shared/types.ts';
 export const DEFAULT_SETTINGS: AppSettings = {
   voiceEnabled: true,
   wakeWordEnabled: true,
-  wakeWord: 'Troko',
+  wakeWord: 'Nuko',
   focusMinutes: 25,
   breakMinutes: 5,
   longBreakMinutes: 15,

@@ -1,41 +1,75 @@
 import {
   Award,
+  BarChart3,
   BookOpen,
   Check,
   Lock,
   Pause,
   Play,
   Plus,
+  Send,
   Shield,
   ShieldAlert,
+  Sparkles,
   Square,
+  Trash2,
+  Volume2,
+  VolumeX,
+  Zap,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type {
   AccessoryCatalogItem,
+  AmbientSoundId,
   AppSettings,
+  CompanionId,
+  CompanionProgressionMap,
+  DueStudyReview,
+  FocusAssistantSnapshot,
+  FocusPresetId,
   GuardianConfig,
   GuardianRuntimeStatus,
   ProgressionState,
   StudyDecodeProgress,
   StudyDocument,
   SummarySnapshot,
+  Task,
   TrokoAccessoryId,
 } from '../../../../shared/types.ts';
-import { apiClient, type FocusStateResponse } from '../../api/client.ts';
+import {
+  apiClient,
+  type FocusStateResponse,
+  type HabitWithProgress,
+} from '../../api/client.ts';
 import { FocusScene } from '../TrokoAvatar/FocusScene.tsx';
+import { TrokoAvatar } from '../TrokoAvatar/TrokoAvatar.tsx';
+import { BreakCoachCard } from './BreakCoachCard.tsx';
 import { StudyDecoderView } from './StudyDecoderView.tsx';
 
 export interface EnfoqueTabProps {
   settings: AppSettings | null;
   summary: SummarySnapshot | null;
   focusState: FocusStateResponse | null;
+  tasks?: Task[];
+  habits?: HabitWithProgress[];
+  activeCompanion?: CompanionId;
+  companions?: CompanionProgressionMap | null;
+  onSelectCompanion?: (companion: CompanionId) => Promise<void>;
   progression?: ProgressionState | null;
   accessoryCatalog?: AccessoryCatalogItem[];
   guardianConfig?: GuardianConfig | null;
   guardianRuntime?: GuardianRuntimeStatus | null;
   studyDocs?: StudyDocument[];
   studyDecodeStatus?: StudyDecodeProgress | null;
+  focusAssistant?: FocusAssistantSnapshot | null;
+  dueStudyReviews?: DueStudyReview[];
+  ambientSoundId?: AmbientSoundId;
+  ambientVolume?: number;
+  ambientIsPlaying?: boolean;
+  ambientAutoSync?: boolean;
+  onChangeAmbientSound?: (sound: AmbientSoundId) => void;
+  onChangeAmbientVolume?: (vol: number) => void;
+  onToggleAmbientAutoSync?: (auto: boolean) => void;
   subTab?: 'focus' | 'study';
   onChangeSubTab?: (sub: 'focus' | 'study') => void;
   onRefreshAll: () => Promise<void>;
@@ -51,12 +85,26 @@ function formatMMSS(sec: number): string {
 export function EnfoqueTab({
   settings,
   focusState,
+  tasks = [],
+  habits = [],
+  activeCompanion = 'nuko',
+  companions = null,
+  onSelectCompanion,
   progression = null,
   accessoryCatalog = [],
   guardianConfig = null,
   guardianRuntime = null,
   studyDocs = [],
   studyDecodeStatus = null,
+  focusAssistant = null,
+  dueStudyReviews = [],
+  ambientSoundId = 'off',
+  ambientVolume = 0.35,
+  ambientIsPlaying = false,
+  ambientAutoSync = true,
+  onChangeAmbientSound,
+  onChangeAmbientVolume,
+  onToggleAmbientAutoSync,
   subTab,
   onChangeSubTab,
   onRefreshAll,
@@ -69,6 +117,9 @@ export function EnfoqueTab({
   };
 
   const [label, setLabel] = useState(focusState?.label ?? 'Trabajo profundo');
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  const [parkingInput, setParkingInput] = useState('');
+  const [showBreakCoachManual, setShowBreakCoachManual] = useState(false);
   const [keywordsText, setKeywordsText] = useState('');
   const [guardianSavedMsg, setGuardianSavedMsg] = useState<string | null>(null);
   const [guardianAlertMsg, setGuardianAlertMsg] = useState<string | null>(null);
@@ -188,6 +239,35 @@ export function EnfoqueTab({
     await onRefreshAll();
   };
 
+  const handleStartPreset = async (presetId: FocusPresetId) => {
+    const res = await apiClient.startFocusPreset(presetId, {
+      label: label.trim() || undefined,
+      taskId: selectedTaskId || null,
+    });
+    onChangeAmbientSound?.(res.preset.soundId);
+    await onRefreshAll();
+  };
+
+  const handleAddParking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = parkingInput.trim();
+    if (!text) return;
+    await apiClient.addParkingLotItem(text);
+    setParkingInput('');
+    await onRefreshAll();
+  };
+
+  const handlePromoteParking = async (id: string) => {
+    await apiClient.promoteParkingLotItem(id);
+    await onRefreshAll();
+  };
+
+  const handleDeleteParking = async (id: string) => {
+    await apiClient.deleteParkingLotItem(id);
+    await onRefreshAll();
+  };
+
+  const pendingTasks = tasks.filter((t) => !t.completed);
   const progressRatio = Math.max(
     0,
     Math.min(1, remainingSec / Math.max(1, totalPhaseSec))
@@ -235,7 +315,7 @@ export function EnfoqueTab({
       </header>
 
       {/* Sub-tabs */}
-      <div style={{ display: 'flex', gap: '6px' }}>
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         <button
           type="button"
           data-testid="subtab-focus"
@@ -256,6 +336,7 @@ export function EnfoqueTab({
           <BookOpen size={13} />
           <span>
             Estudio PDF & Bloques{studyDocs.length > 0 ? ` (${studyDocs.length})` : ''}
+            {dueStudyReviews.length > 0 ? ` · ${dueStudyReviews.length} repaso` : ''}
           </span>
         </button>
       </div>
@@ -264,11 +345,112 @@ export function EnfoqueTab({
         <StudyDecoderView
           studyDocs={studyDocs}
           decodeStatus={studyDecodeStatus}
+          dueStudyReviews={dueStudyReviews}
           onRefreshAll={onRefreshAll}
           onSwitchToFocus={() => switchSubTab('focus')}
         />
       ) : (
         <>
+          {/* 1-Click Focus Presets + Intention Anchor */}
+          {focusAssistant && (
+            <section
+              className="card"
+              data-testid="focus-presets-card"
+              style={{ display: 'grid', gap: '8px' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: '12.5px', color: 'var(--cream)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <Zap size={13} color="#B6F23A" /> Perfiles de enfoque (1 clic)
+                </strong>
+                {focusAssistant.activeIntention && (
+                  <span style={{ fontSize: '11px', color: '#B6F23A' }}>
+                    Meta: {focusAssistant.activeIntention.label.slice(0, 26)}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '6px' }}>
+                {focusAssistant.presets.map((preset) => {
+                  const selected = focusAssistant.activePresetId === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      data-testid={`preset-btn-${preset.id}`}
+                      onClick={() => void handleStartPreset(preset.id)}
+                      className={selected ? 'btn-lime' : 'btn-ghost'}
+                      style={{
+                        textAlign: 'left',
+                        padding: '7px 9px',
+                        borderRadius: '11px',
+                        display: 'grid',
+                        gap: '2px',
+                      }}
+                    >
+                      <span style={{ fontSize: '11.5px', fontWeight: 700 }}>{preset.name}</span>
+                      <span style={{ fontSize: '10px', opacity: 0.8 }}>
+                        {preset.focusMinutes}/{preset.breakMinutes}m · {preset.guardianMode === 'whitelist' ? 'Solo estudio' : 'Lista negra'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {pendingTasks.length > 0 && (
+                <select
+                  aria-label="Vincular tarea como intención"
+                  className="input"
+                  value={selectedTaskId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSelectedTaskId(id);
+                    const found = pendingTasks.find((t) => t.id === id);
+                    if (found) setLabel(found.title);
+                  }}
+                  style={{ fontSize: '11.5px', padding: '5px 8px' }}
+                >
+                  <option value="">Elegir meta desde tus tareas pendientes ({pendingTasks.length})...</option>
+                  {pendingTasks.slice(0, 8).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      ✓ {t.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </section>
+          )}
+
+          {/* Due Spaced Repetition Nudge */}
+          {dueStudyReviews.length > 0 && (
+            <div
+              className="card"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 12px',
+                border: '1px solid rgba(182, 242, 58, 0.35)',
+              }}
+            >
+              <span style={{ fontSize: '12px', color: 'var(--cream)' }}>
+                <Sparkles size={13} color="#B6F23A" style={{ verticalAlign: 'middle', marginRight: '5px' }} />
+                Tenés <strong>{dueStudyReviews.length}</strong> bloque(s) PDF para repasar hoy.
+              </span>
+              <button
+                type="button"
+                className="btn-lime"
+                style={{ fontSize: '11px', padding: '4px 9px' }}
+                onClick={() => switchSubTab('study')}
+              >
+                Repasar ahora
+              </button>
+            </div>
+          )}
+
+          {/* Active Guided Break Coach */}
+          {(phase === 'break' || phase === 'long_break' || readyForBreak || showBreakCoachManual) && (
+            <BreakCoachCard habits={habits} onRefreshAll={onRefreshAll} />
+          )}
           <div className="card" style={{ textAlign: 'center' }}>
             <div
               style={{
@@ -498,9 +680,78 @@ export function EnfoqueTab({
             </div>
           </section>
 
-          {/* Progression & Unlockable Troko Accessories */}
+          {/* Progression, Dual Companions (Nuko & Luma) & Unlockable Accessories */}
           {progression && (
             <section className="card" data-testid="progression-card">
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '6px',
+                  marginBottom: '10px',
+                }}
+              >
+                <button
+                  type="button"
+                  data-testid="enfoque-companion-nuko"
+                  className={activeCompanion === 'nuko' ? 'btn-lime' : 'btn-ghost'}
+                  onClick={() => void onSelectCompanion?.('nuko')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 9px',
+                    borderRadius: '12px',
+                    textAlign: 'left',
+                  }}
+                >
+                  <TrokoAvatar
+                    size="sm"
+                    mood="contento"
+                    state="idle"
+                    companion="nuko"
+                    accessory={companions?.nuko.equippedAccessory ?? 'none'}
+                  />
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 700 }}>Nuko · Búho</div>
+                    <div className="mono" style={{ fontSize: '10px', opacity: 0.85 }}>
+                      Nv.{companions?.nuko.level ?? (activeCompanion === 'nuko' ? progression.level : 1)} ·{' '}
+                      {companions?.nuko.xp ?? (activeCompanion === 'nuko' ? progression.xp : 0)} XP
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="enfoque-companion-luma"
+                  className={activeCompanion === 'luma' ? 'btn-lime' : 'btn-ghost'}
+                  onClick={() => void onSelectCompanion?.('luma')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 9px',
+                    borderRadius: '12px',
+                    textAlign: 'left',
+                  }}
+                >
+                  <TrokoAvatar
+                    size="sm"
+                    mood="contento"
+                    state="idle"
+                    companion="luma"
+                    accessory={companions?.luma.equippedAccessory ?? 'none'}
+                  />
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 700 }}>Luma · Luciérnaga</div>
+                    <div className="mono" style={{ fontSize: '10px', opacity: 0.85 }}>
+                      Nv.{companions?.luma.level ?? (activeCompanion === 'luma' ? progression.level : 1)} ·{' '}
+                      {companions?.luma.xp ?? (activeCompanion === 'luma' ? progression.xp : 0)} XP
+                    </div>
+                  </div>
+                </button>
+              </div>
+
               <div
                 style={{
                   display: 'flex',
@@ -513,7 +764,8 @@ export function EnfoqueTab({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Award size={15} color="#B6F23A" />
                   <strong style={{ fontSize: '13px', color: 'var(--cream)' }}>
-                    Nivel {progression.level} · {progression.levelTitle}
+                    {activeCompanion === 'luma' ? 'Luma' : 'Nuko'} · Nivel {progression.level} ·{' '}
+                    {progression.levelTitle}
                   </strong>
                 </div>
                 <span className="sub mono" data-testid="progression-xp-label">
@@ -540,7 +792,8 @@ export function EnfoqueTab({
               </div>
 
               <div className="sub" style={{ fontSize: '11px', marginBottom: '8px' }}>
-                {progression.xpIntoLevel}/{progression.xpForNextLevel} XP para el siguiente nivel
+                {progression.xpIntoLevel}/{progression.xpForNextLevel} XP para el siguiente nivel de{' '}
+                {activeCompanion === 'luma' ? 'Luma' : 'Nuko'}
                 {progression.lastRewardReason ? ` · Último: ${progression.lastRewardReason}` : ''}
               </div>
 
@@ -718,6 +971,281 @@ export function EnfoqueTab({
                 >
                   {guardianAlertMsg}
                 </div>
+              )}
+            </section>
+          )}
+
+          {/* Offline Ambient Soundscapes + Notification Shield */}
+          <section
+            className="card"
+            data-testid="ambient-shield-card"
+            style={{ display: 'grid', gap: '10px' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: '12.5px', color: 'var(--cream)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                {ambientIsPlaying ? <Volume2 size={14} color="#B6F23A" /> : <VolumeX size={14} color="#8E8E93" />}
+                Paisajes sonoros offline (Web Audio)
+              </strong>
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ fontSize: '11px', padding: '4px 8px' }}
+                onClick={() => setShowBreakCoachManual((v) => !v)}
+              >
+                {showBreakCoachManual ? 'Ocultar pausa activa' : 'Probar pausa activa'}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {(
+                [
+                  { id: 'off', label: 'Silencio' },
+                  { id: 'brown', label: 'Ruido marrón' },
+                  { id: 'rain', label: 'Lluvia suave' },
+                  { id: 'binaural40', label: 'Gamma 40 Hz' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  data-testid={`sound-btn-${opt.id}`}
+                  className={ambientSoundId === opt.id ? 'btn-lime' : 'btn-ghost'}
+                  style={{ fontSize: '11px', padding: '4px 9px' }}
+                  onClick={() => onChangeAmbientSound?.(opt.id)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--muted)' }}>
+                Volumen
+                <input
+                  type="range"
+                  min={0.05}
+                  max={1}
+                  step={0.05}
+                  value={ambientVolume}
+                  onChange={(e) => onChangeAmbientVolume?.(Number(e.target.value))}
+                  style={{ width: '90px', accentColor: '#B6F23A' }}
+                />
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--muted)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={ambientAutoSync}
+                  onChange={(e) => onToggleAmbientAutoSync?.(e.target.checked)}
+                />
+                Solo sonar en Pomodoro
+              </label>
+            </div>
+
+            {focusAssistant && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '8px',
+                  paddingTop: '8px',
+                  borderTop: '1px solid var(--line)',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ fontSize: '11.5px', color: 'var(--cream)' }}>
+                  <Shield size={12} color="#58B2FF" style={{ verticalAlign: 'middle', marginRight: '5px' }} />
+                  <strong>Escudo de avisos:</strong>{' '}
+                  {focusAssistant.shieldEnabled ? 'Retiene recordatorios en foco' : 'Desactivado'}
+                  {focusAssistant.shieldedQueue.length > 0 && (
+                    <span style={{ color: '#58B2FF', marginLeft: '6px' }}>
+                      ({focusAssistant.shieldedQueue.length} retenido(s))
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {focusAssistant.shieldedQueue.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ fontSize: '10.5px', padding: '4px 8px' }}
+                      onClick={async () => {
+                        await apiClient.flushFocusShield();
+                        await onRefreshAll();
+                      }}
+                    >
+                      Entregar ahora
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-testid="shield-toggle-btn"
+                    className={focusAssistant.shieldEnabled ? 'btn-lime' : 'btn-ghost'}
+                    style={{ fontSize: '10.5px', padding: '4px 9px' }}
+                    onClick={async () => {
+                      await apiClient.setFocusShield(!focusAssistant.shieldEnabled);
+                      await onRefreshAll();
+                    }}
+                  >
+                    {focusAssistant.shieldEnabled ? 'Activo' : 'Activar'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Mental Parking Lot */}
+          {focusAssistant && (
+            <section
+              className="card"
+              data-testid="parking-lot-card"
+              style={{ display: 'grid', gap: '8px' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: '12.5px', color: 'var(--cream)' }}>
+                  Parking Lot mental ({focusAssistant.parkingLot.length})
+                </strong>
+                <span className="sub" style={{ fontSize: '10.5px' }}>
+                  Estacioná ideas sin perder el foco
+                </span>
+              </div>
+
+              <form onSubmit={(e) => void handleAddParking(e)} style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  className="input"
+                  data-testid="parking-lot-input"
+                  value={parkingInput}
+                  onChange={(e) => setParkingInput(e.target.value)}
+                  placeholder="Ej: Responder mail a Juan después del bloque..."
+                  style={{ flex: 1, fontSize: '11.5px' }}
+                />
+                <button
+                  type="submit"
+                  className="btn-lime"
+                  data-testid="parking-lot-add-btn"
+                  style={{ fontSize: '11px', padding: '5px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <Send size={11} /> Estacionar
+                </button>
+              </form>
+
+              {focusAssistant.parkingLot.length > 0 && (
+                <div style={{ display: 'grid', gap: '5px' }}>
+                  {focusAssistant.parkingLot.slice(0, 6).map((item) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 8px',
+                        borderRadius: '9px',
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid var(--line)',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '11.5px',
+                          color: item.promotedTaskId ? '#8E8E93' : 'var(--cream)',
+                          textDecoration: item.promotedTaskId ? 'line-through' : 'none',
+                        }}
+                      >
+                        {item.text}
+                      </span>
+                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                        {!item.promotedTaskId && (
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            style={{ fontSize: '10.5px', padding: '3px 7px', color: '#B6F23A' }}
+                            onClick={() => void handlePromoteParking(item.id)}
+                          >
+                            → Tarea
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          aria-label="Eliminar del Parking Lot"
+                          style={{ fontSize: '10.5px', padding: '3px 6px' }}
+                          onClick={() => void handleDeleteParking(item.id)}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Focus Insights (Radiografía de Enfoque) */}
+          {focusAssistant && (
+            <section
+              className="card"
+              data-testid="focus-insights-card"
+              style={{ display: 'grid', gap: '8px' }}
+            >
+              <strong style={{ fontSize: '12.5px', color: 'var(--cream)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <BarChart3 size={14} color="#58B2FF" /> Radiografía de enfoque
+              </strong>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                <div style={{ padding: '7px 8px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--muted)' }}>Mejor franja</div>
+                  <strong style={{ fontSize: '12.5px', color: '#B6F23A' }}>
+                    {focusAssistant.insights.bestTimeSlot}
+                  </strong>
+                </div>
+                <div style={{ padding: '7px 8px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--muted)' }}>Bloques limpios</div>
+                  <strong className="mono" style={{ fontSize: '12.5px', color: 'var(--cream)' }}>
+                    {focusAssistant.insights.cleanBlocksPct}%
+                  </strong>
+                </div>
+                <div style={{ padding: '7px 8px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--muted)' }}>Minutos totales</div>
+                  <strong className="mono" style={{ fontSize: '12.5px', color: '#58B2FF' }}>
+                    {focusAssistant.insights.totalFocusMinutes}m
+                  </strong>
+                </div>
+              </div>
+
+              {focusAssistant.insights.topDistractions.length > 0 ? (
+                <div style={{ display: 'grid', gap: '4px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                    Principales distracciones detectadas por el Guardián:
+                  </span>
+                  {focusAssistant.insights.topDistractions.slice(0, 3).map((d) => (
+                    <div
+                      key={d.label}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: '11px',
+                        padding: '4px 8px',
+                        borderRadius: '8px',
+                        background: 'rgba(255, 90, 95, 0.08)',
+                        color: '#FFB4B6',
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {d.label}
+                      </span>
+                      <span className="mono" style={{ flexShrink: 0 }}>
+                        {d.count}× · {d.totalSec}s
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="sub" style={{ fontSize: '11px' }}>
+                  Sin distracciones registradas todavía. ¡Seguí cuidando tu racha limpia!
+                </span>
               )}
             </section>
           )}

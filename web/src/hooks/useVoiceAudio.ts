@@ -147,8 +147,9 @@ export function useVoiceAudio({
         setLiveTranscript(rawTranscript);
         callbacksRef.current.onTranscriptUpdate(rawTranscript);
 
+        const customWake = (wakeWord || 'nuko').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const wakeRegex = new RegExp(
-          `^(?:oye\\s+)?${wakeWord || 'troko'}\\b[,:\\s]*(.*)$`,
+          `^(?:oye\\s+)?(?:nuko|luma|troko|${customWake})\\b[,:\\s]*(.*)$`,
           'i'
         );
         const wakeMatch = wakeRegex.exec(rawTranscript);

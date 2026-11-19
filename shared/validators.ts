@@ -1,8 +1,10 @@
 import {
   AI_PROVIDERS,
+  COMPANION_IDS,
   HABIT_SCENE_IDS,
   INTEGRATION_TYPES,
   ISLAND_STATES,
+  NUKO_MOODS,
   OS_PERMISSION_STATUSES,
   REMINDER_RECURRENCES,
   TAB_IDS,
@@ -10,11 +12,13 @@ import {
 } from './types.ts';
 import type {
   AIProviderType,
+  CompanionId,
   HabitSceneId,
   InputMode,
   IntegrationType,
   IslandState,
   IslandStatusPayload,
+  NukoMood,
   OSPermissionStatus,
   OSPermissionsMap,
   PeekCard,
@@ -74,6 +78,14 @@ export function isIsoDateString(v: unknown): v is string {
 
 export function isIslandState(v: unknown): v is IslandState {
   return typeof v === 'string' && (ISLAND_STATES as readonly string[]).includes(v);
+}
+
+export function isCompanionId(v: unknown): v is CompanionId {
+  return typeof v === 'string' && (COMPANION_IDS as readonly string[]).includes(v);
+}
+
+export function isNukoMood(v: unknown): v is NukoMood {
+  return typeof v === 'string' && (NUKO_MOODS as readonly string[]).includes(v);
 }
 
 export function isTrokoMood(v: unknown): v is TrokoMood {

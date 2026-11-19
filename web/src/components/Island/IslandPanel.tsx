@@ -12,9 +12,14 @@ import {
 import { useRef } from 'react';
 import type {
   AccessoryCatalogItem,
+  AmbientSoundId,
   AppSettings,
+  CompanionId,
+  CompanionProgressionMap,
+  DueStudyReview,
   EmailDraft,
   EmailMessage,
+  FocusAssistantSnapshot,
   GuardianConfig,
   GuardianRuntimeStatus,
   IntegrationRecord,
@@ -65,12 +70,24 @@ export interface IslandPanelProps {
   desktopScan: DesktopScanResponse | null;
   integrations: IntegrationRecord[];
   launchedApps: Array<{ app: string; launchedAt: string }>;
+  activeCompanion: CompanionId;
+  companions: CompanionProgressionMap | null;
+  onSelectCompanion: (companion: CompanionId) => Promise<void>;
   progression: ProgressionState | null;
   accessoryCatalog: AccessoryCatalogItem[];
   guardianConfig: GuardianConfig | null;
   guardianRuntime: GuardianRuntimeStatus | null;
   studyDocs: StudyDocument[];
   studyDecodeStatus: StudyDecodeProgress | null;
+  focusAssistant: FocusAssistantSnapshot | null;
+  dueStudyReviews: DueStudyReview[];
+  ambientSoundId: AmbientSoundId;
+  ambientVolume: number;
+  ambientIsPlaying: boolean;
+  ambientAutoSync: boolean;
+  onChangeAmbientSound: (sound: AmbientSoundId) => void;
+  onChangeAmbientVolume: (vol: number) => void;
+  onToggleAmbientAutoSync: (auto: boolean) => void;
   registerHead: (el: SVGSVGElement | null) => () => void;
   onSelectTab: (tab: TabId) => void;
   onSelectEnfoqueSubTab?: (sub: 'focus' | 'study') => void;
@@ -144,12 +161,24 @@ export function IslandPanel({
   desktopScan,
   integrations,
   launchedApps,
+  activeCompanion,
+  companions,
+  onSelectCompanion,
   progression,
   accessoryCatalog,
   guardianConfig,
   guardianRuntime,
   studyDocs,
   studyDecodeStatus,
+  focusAssistant,
+  dueStudyReviews,
+  ambientSoundId,
+  ambientVolume,
+  ambientIsPlaying,
+  ambientAutoSync,
+  onChangeAmbientSound,
+  onChangeAmbientVolume,
+  onToggleAmbientAutoSync,
   registerHead,
   onSelectTab,
   onSelectEnfoqueSubTab,
@@ -203,7 +232,7 @@ export function IslandPanel({
       id="panel"
       data-testid="panel"
       role="region"
-      aria-label="Panel de Troko"
+      aria-label="Panel de Nuko Desk"
       className="panel"
     >
       <article className="panel__clip">
@@ -216,7 +245,7 @@ export function IslandPanel({
                 state={status.state}
                 registerHead={registerHead}
               />
-              <b>Troko</b>
+              <b>{activeCompanion === 'luma' ? 'Luma' : 'Nuko'}</b>
               <span className="status">
                 <span className="status__dot" data-state={status.state} />
                 <em>{status.statusText}</em>
@@ -367,12 +396,26 @@ export function IslandPanel({
                 settings={settings}
                 summary={summary}
                 focusState={focusState}
+                tasks={tasks}
+                habits={habits}
+                activeCompanion={activeCompanion}
+                companions={companions}
+                onSelectCompanion={onSelectCompanion}
                 progression={progression}
                 accessoryCatalog={accessoryCatalog}
                 guardianConfig={guardianConfig}
                 guardianRuntime={guardianRuntime}
                 studyDocs={studyDocs}
                 studyDecodeStatus={studyDecodeStatus}
+                focusAssistant={focusAssistant}
+                dueStudyReviews={dueStudyReviews}
+                ambientSoundId={ambientSoundId}
+                ambientVolume={ambientVolume}
+                ambientIsPlaying={ambientIsPlaying}
+                ambientAutoSync={ambientAutoSync}
+                onChangeAmbientSound={onChangeAmbientSound}
+                onChangeAmbientVolume={onChangeAmbientVolume}
+                onToggleAmbientAutoSync={onToggleAmbientAutoSync}
                 subTab={enfoqueSubTab}
                 onChangeSubTab={onSelectEnfoqueSubTab}
                 onRefreshAll={onRefreshAll}

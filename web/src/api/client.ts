@@ -3,9 +3,17 @@ import type {
   AiConnectionTestResult,
   AiDetectResult,
   AppSettings,
+  CompanionId,
+  CompanionProgressionMap,
+  DueStudyReview,
   EmailDraft,
   EmailMessage,
+  FocusAssistantSnapshot,
+  FocusInsights,
+  FocusIntention,
   FocusPhase,
+  FocusPreset,
+  FocusPresetId,
   FocusSession,
   GuardianConfig,
   GuardianRuntimeStatus,
@@ -14,12 +22,15 @@ import type {
   IntegrationRecord,
   IslandStatusPayload,
   MemoryExportPayload,
+  ParkingLotItem,
   ProgressionState,
   Reminder,
   ReminderRecurrence,
   SettingsPatch,
+  ShieldedNotification,
   StudyDecodeProgress,
   StudyDocument,
+  StudyReviewQuality,
   SummarySnapshot,
   Task,
   Timer,
@@ -685,17 +696,34 @@ export const apiClient = {
     await requestJson(`/api/notes/${id}`, { method: 'DELETE' });
   },
 
-  // Progression & Accessories
+  // Progression, Dual Companions (Nuko & Luma) & Accessories
   getProgression(): Promise<{
     ok: true;
+    activeCompanion: CompanionId;
     progression: ProgressionState;
+    companions: CompanionProgressionMap;
     catalog: AccessoryCatalogItem[];
   }> {
     return requestJson('/api/progression');
   },
+  setCompanion(companion: CompanionId): Promise<{
+    ok: true;
+    activeCompanion: CompanionId;
+    progression: ProgressionState;
+    companions: CompanionProgressionMap;
+    catalog: AccessoryCatalogItem[];
+  }> {
+    return requestJson('/api/progression/companion', {
+      method: 'POST',
+      body: JSON.stringify({ companion }),
+    });
+  },
   equipAccessory(accessory: TrokoAccessoryId): Promise<{
     ok: true;
+    activeCompanion?: CompanionId;
     progression: ProgressionState;
+    companions?: CompanionProgressionMap;
+    catalog?: AccessoryCatalogItem[];
   }> {
     return requestJson('/api/progression/equip', {
       method: 'POST',
@@ -827,6 +855,120 @@ export const apiClient = {
     return requestJson(`/api/study/docs/${docId}/blocks/${blockId}/feynman`, {
       method: 'POST',
       body: JSON.stringify({ explanation }),
+    });
+  },
+
+  // Spaced Repetition Study Reviews
+  getDueStudyReviews(): Promise<{
+    ok: true;
+    dueReviews: DueStudyReview[];
+    count: number;
+  }> {
+    return requestJson('/api/study/due-reviews');
+  },
+  recordStudyReview(
+    docId: string,
+    blockId: string,
+    quality: StudyReviewQuality
+  ): Promise<{
+    ok: true;
+    doc: StudyDocument;
+    intervalDays: number;
+    xpEarned: number;
+    dueReviews: DueStudyReview[];
+    progression: ProgressionState;
+  }> {
+    return requestJson(`/api/study/docs/${docId}/blocks/${blockId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ quality }),
+    });
+  },
+
+  // Focus Virtual Assistant (Presets, Intention, Parking Lot, Shield, Insights)
+  getFocusAssistant(): Promise<{ ok: true } & FocusAssistantSnapshot> {
+    return requestJson('/api/focus/assistant');
+  },
+  getFocusInsights(): Promise<{ ok: true; insights: FocusInsights }> {
+    return requestJson('/api/focus/insights');
+  },
+  setFocusIntention(input: {
+    label: string;
+    taskId?: string | null;
+    studyDocId?: string | null;
+    studyBlockId?: string | null;
+  }): Promise<{ ok: true; intention: FocusIntention; assistant: FocusAssistantSnapshot }> {
+    return requestJson('/api/focus/intention', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  startFocusPreset(
+    presetId: FocusPresetId,
+    input: {
+      label?: string;
+      taskId?: string | null;
+      studyDocId?: string | null;
+      studyBlockId?: string | null;
+    } = {}
+  ): Promise<{
+    ok: true;
+    preset: FocusPreset;
+    intention: FocusIntention;
+    assistant: FocusAssistantSnapshot;
+    focus: FocusStateResponse;
+  }> {
+    return requestJson(`/api/focus/presets/${presetId}/start`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  setFocusShield(enabled: boolean): Promise<{
+    ok: true;
+    shieldEnabled: boolean;
+    assistant: FocusAssistantSnapshot;
+  }> {
+    return requestJson('/api/focus/shield', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    });
+  },
+  flushFocusShield(): Promise<{
+    ok: true;
+    flushed: ShieldedNotification[];
+    assistant: FocusAssistantSnapshot;
+  }> {
+    return requestJson('/api/focus/shield/flush', {
+      method: 'POST',
+      body: '{}',
+    });
+  },
+  addParkingLotItem(text: string): Promise<{
+    ok: true;
+    item: ParkingLotItem;
+    parkingLot: ParkingLotItem[];
+  }> {
+    return requestJson('/api/focus/parking-lot', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  },
+  promoteParkingLotItem(id: string): Promise<{
+    ok: true;
+    item: ParkingLotItem;
+    taskId: string;
+    parkingLot: ParkingLotItem[];
+  }> {
+    return requestJson(`/api/focus/parking-lot/${id}/promote`, {
+      method: 'POST',
+      body: '{}',
+    });
+  },
+  deleteParkingLotItem(id: string): Promise<{
+    ok: true;
+    parkingLot: ParkingLotItem[];
+  }> {
+    return requestJson(`/api/focus/parking-lot/${id}`, {
+      method: 'DELETE',
     });
   },
 

@@ -23,8 +23,8 @@
     "package:win": "npm run electron:build && electron-builder --win"
   },
   "build": {
-    "appId": "com.trokotec.trokodesk",
-    "productName": "Troko-Desk",
+    "appId": "com.nuko.desk",
+    "productName": "Nuko-Desk",
     "directories": {
       "output": "release"
     },

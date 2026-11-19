@@ -1,10 +1,15 @@
-import { CheckCircle2, Crosshair, Mic } from 'lucide-react';
+import { CheckCircle2, Crosshair, Mic, Shield, Volume2 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type {
   AccessoryCatalogItem,
+  AmbientSoundId,
   AppSettings,
+  CompanionId,
+  CompanionProgressionMap,
+  DueStudyReview,
   EmailDraft,
   EmailMessage,
+  FocusAssistantSnapshot,
   GuardianConfig,
   GuardianRuntimeStatus,
   IntegrationRecord,
@@ -47,12 +52,24 @@ export interface IslandBarProps {
   desktopScan: DesktopScanResponse | null;
   integrations: IntegrationRecord[];
   launchedApps: Array<{ app: string; launchedAt: string }>;
+  activeCompanion: CompanionId;
+  companions: CompanionProgressionMap | null;
+  onSelectCompanion: (companion: CompanionId) => Promise<void>;
   progression: ProgressionState | null;
   accessoryCatalog: AccessoryCatalogItem[];
   guardianConfig: GuardianConfig | null;
   guardianRuntime: GuardianRuntimeStatus | null;
   studyDocs: StudyDocument[];
   studyDecodeStatus: StudyDecodeProgress | null;
+  focusAssistant: FocusAssistantSnapshot | null;
+  dueStudyReviews: DueStudyReview[];
+  ambientSoundId: AmbientSoundId;
+  ambientVolume: number;
+  ambientIsPlaying: boolean;
+  ambientAutoSync: boolean;
+  onChangeAmbientSound: (sound: AmbientSoundId) => void;
+  onChangeAmbientVolume: (vol: number) => void;
+  onToggleAmbientAutoSync: (auto: boolean) => void;
   registerHead: (el: SVGSVGElement | null) => () => void;
   onTriggerClick: () => void;
   onHoverOpen: () => void;
@@ -161,12 +178,24 @@ export function IslandBar({
   desktopScan,
   integrations,
   launchedApps,
+  activeCompanion,
+  companions,
+  onSelectCompanion,
   progression,
   accessoryCatalog,
   guardianConfig,
   guardianRuntime,
   studyDocs,
   studyDecodeStatus,
+  focusAssistant,
+  dueStudyReviews,
+  ambientSoundId,
+  ambientVolume,
+  ambientIsPlaying,
+  ambientAutoSync,
+  onChangeAmbientSound,
+  onChangeAmbientVolume,
+  onToggleAmbientAutoSync,
   registerHead,
   onTriggerClick,
   onHoverOpen,
@@ -271,6 +300,36 @@ export function IslandBar({
             {status.state === 'speak' && <Waves purple />}
             {status.state === 'notification' && <NotificationRaysSvg />}
             {status.state === 'remind' && <RemindIconSvg />}
+            {status.state === 'focus' && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  maxWidth: '104px',
+                  overflow: 'hidden',
+                }}
+                title={focusAssistant?.activeIntention?.label || focusState?.label || 'Enfoque'}
+              >
+                {focusAssistant?.shieldEnabled && (
+                  <Shield size={12} color="#58B2FF" aria-hidden="true" />
+                )}
+                {ambientIsPlaying && (
+                  <Volume2 size={12} color="#B6F23A" aria-hidden="true" />
+                )}
+                <span
+                  style={{
+                    fontSize: '11px',
+                    color: '#B3B0A6',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {focusAssistant?.activeIntention?.label || focusState?.label || 'Enfoque'}
+                </span>
+              </span>
+            )}
           </span>
 
           <span className="island__avatar-slot">
@@ -543,12 +602,24 @@ export function IslandBar({
         desktopScan={desktopScan}
         integrations={integrations}
         launchedApps={launchedApps}
+        activeCompanion={activeCompanion}
+        companions={companions}
+        onSelectCompanion={onSelectCompanion}
         progression={progression}
         accessoryCatalog={accessoryCatalog}
         guardianConfig={guardianConfig}
         guardianRuntime={guardianRuntime}
         studyDocs={studyDocs}
         studyDecodeStatus={studyDecodeStatus}
+        focusAssistant={focusAssistant}
+        dueStudyReviews={dueStudyReviews}
+        ambientSoundId={ambientSoundId}
+        ambientVolume={ambientVolume}
+        ambientIsPlaying={ambientIsPlaying}
+        ambientAutoSync={ambientAutoSync}
+        onChangeAmbientSound={onChangeAmbientSound}
+        onChangeAmbientVolume={onChangeAmbientVolume}
+        onToggleAmbientAutoSync={onToggleAmbientAutoSync}
         registerHead={registerHead}
         onSelectTab={onSelectTab}
         onSelectEnfoqueSubTab={onSelectEnfoqueSubTab}

@@ -82,6 +82,7 @@ export function registerAiRoutes(router: Router, ctx: ServerContext): void {
     ctx.progressionService.wipe();
     ctx.guardianService.wipe();
     ctx.studyService.wipe();
+    ctx.focusAssistantService.wipe();
     ctx.eventBus.setIslandState({
       state: 'idle',
       mood: 'contento',

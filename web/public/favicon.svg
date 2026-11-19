@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -14 112 88">
+  <defs>
+    <linearGradient id="nk-hood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#332B52"/>
+      <stop offset="100%" stop-color="#211B36"/>
+    </linearGradient>
+    <linearGradient id="nk-face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F6F1E3"/>
+      <stop offset="100%" stop-color="#E8DFC8"/>
+    </linearGradient>
+  </defs>
+  <path d="M32 12Q21 3 15 6Q12 12 14 19C8 27 7 39 10 50C13 60 26 65 50 65C74 65 87 60 90 50C93 39 92 27 86 19Q88 12 85 6Q79 3 68 12C62 10 56 9.5 50 9.5C44 9.5 38 10 32 12Z" fill="url(#nk-hood)" stroke="#8B5CF6" stroke-width="2"/>
+  <path d="M50 20C43 15 29 15 22 22C15 29 15 44 23 53C30 59 40 61 50 61C60 61 70 59 77 53C85 44 85 29 78 22C71 15 57 15 50 20Z" fill="url(#nk-face)"/>
+  <circle cx="37" cy="34" r="6.8" fill="#141414"/>
+  <circle cx="63" cy="34" r="6.8" fill="#141414"/>
+  <circle cx="39.3" cy="31.5" r="2.1" fill="#FFFFFF"/>
+  <circle cx="65.3" cy="31.5" r="2.1" fill="#FFFFFF"/>
+  <path d="M50 38.5L54.2 42L50 45.8L45.8 42Z" fill="#F5A623"/>
+  <path d="M44 47.5Q50 52 56 47.5" fill="none" stroke="#141414" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

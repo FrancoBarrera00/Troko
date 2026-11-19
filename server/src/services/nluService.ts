@@ -14,12 +14,14 @@ import { AiProviderService } from './aiProvider.ts';
 import type { AiChatMessage, AiToolAction } from './aiProvider.ts';
 import type { AppLauncherService } from './appLauncherService.ts';
 import { BridgeService } from './bridgeService.ts';
+import type { FocusAssistantService } from './focusAssistantService.ts';
 import type { HabitService, HabitWithProgress } from './habitService.ts';
 import type { MailerService } from './mailerService.ts';
 import type { NotesService } from './notesService.ts';
 import type { OrganizerService } from './organizerService.ts';
 import type { ProductivityService } from './productivityService.ts';
 import type { SettingsService } from './settingsService.ts';
+import type { StudyService } from './studyService.ts';
 
 const MODEL_ID = 'llama-3.2-3b-instruct-q4-k-m';
 const MODEL_NAME = 'Llama 3.2 3B Instruct';
@@ -144,6 +146,8 @@ export class NluService {
   private readonly appLauncherService: AppLauncherService;
   private readonly aiProvider: AiProviderService;
   private readonly bridgeService: BridgeService;
+  private readonly focusAssistantService?: FocusAssistantService;
+  private readonly studyService?: StudyService;
 
   private downloadStatus: ModelDownloadStatus = 'idle';
   private progressPct = 0;
@@ -163,6 +167,8 @@ export class NluService {
     appLauncherService: AppLauncherService;
     aiProvider?: AiProviderService;
     bridgeService?: BridgeService;
+    focusAssistantService?: FocusAssistantService;
+    studyService?: StudyService;
   }) {
     this.db = deps.db;
     this.eventBus = deps.eventBus;
@@ -175,6 +181,8 @@ export class NluService {
     this.appLauncherService = deps.appLauncherService;
     this.aiProvider = deps.aiProvider ?? new AiProviderService();
     this.bridgeService = deps.bridgeService ?? new BridgeService();
+    this.focusAssistantService = deps.focusAssistantService;
+    this.studyService = deps.studyService;
   }
 
   private getIntegration(type: IntegrationType) {
@@ -650,21 +658,21 @@ export class NluService {
     let toolAction: Record<string, unknown> | null = null;
 
     const relRemMatch =
-      /^(?:troko[,\s]+)?(?:recu[eé]rdame|recordame|acordame|av[ií]same|remind\s+me)(?:\s+que)?\s+en\s+(\d+)\s*(segundos?|seg|s|minutos?|min|m|horas?|hrs?|h)\b(?:\s+(?:de|que|a))?\s+(.+)$/i.exec(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:recu[eé]rdame|recordame|acordame|av[ií]same|remind\s+me)(?:\s+que)?\s+en\s+(\d+)\s*(segundos?|seg|s|minutos?|min|m|horas?|hrs?|h)\b(?:\s+(?:de|que|a))?\s+(.+)$/i.exec(
         trimmed
       );
     const relRemAltMatch =
-      /^(?:troko[,\s]+)?(?:recu[eé]rdame|recordame|acordame|av[ií]same|remind\s+me)\s+(.+?)\s+en\s+(\d+)\s*(segundos?|seg|s|minutos?|min|m|horas?|hrs?|h)\s*[.!]?$/i.exec(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:recu[eé]rdame|recordame|acordame|av[ií]same|remind\s+me)\s+(.+?)\s+en\s+(\d+)\s*(segundos?|seg|s|minutos?|min|m|horas?|hrs?|h)\s*[.!]?$/i.exec(
         trimmed
       );
     const clockRemMatch =
-      /^(?:troko[,\s]+)?(?:recu[eé]rdame|recordame|acordame|av[ií]same)\s+a\s+las\s+(\d{1,2})(?::(\d{2}))?(?:\s*(?:hs?|horas?|de\s+la\s+(?:ma[ñn]ana|tarde|noche)))?\s+(?:que\s+|de\s+)?(.+)$/i.exec(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:recu[eé]rdame|recordame|acordame|av[ií]same)\s+a\s+las\s+(\d{1,2})(?::(\d{2}))?(?:\s*(?:hs?|horas?|de\s+la\s+(?:ma[ñn]ana|tarde|noche)))?\s+(?:que\s+|de\s+)?(.+)$/i.exec(
         trimmed
       );
 
     // 1. Sleep command ("Troko, descansa" / "Descansa")
     if (
-      /^(?:troko[,\s]+)?(?:descansa|duerme|vete\s+a\s+dormir|and[aá]\s+a\s+dormir|modo\s+reposo|a\s+dormir)$/i.test(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:descansa|duerme|vete\s+a\s+dormir|and[aá]\s+a\s+dormir|modo\s+reposo|a\s+dormir)$/i.test(
         trimmed
       )
     ) {
@@ -678,15 +686,97 @@ export class NluService {
         peekCard: null,
       });
     }
-    // 2. Quick Note ("Nota rápida: ..." / "Apunta una nota: ...")
+    // 1b. Parking Lot ("Estaciona ..." / "Parking: ...")
     else if (
-      this.notesService &&
-      /^(?:troko[,\s]+)?(?:nota\s+r[aá]pida|apunta(?:r|me)?(?:\s+una)?\s+nota|guarda(?:r|me)?(?:\s+una)?\s+nota|anota(?:r|me)?\s+nota)[:\s]+(.+)$/i.test(
+      this.focusAssistantService &&
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:estaciona(?:r|me)?|parking(?:\s+lot)?|para\s+despu[eé]s)[:\s]+(.+)$/i.test(
         trimmed
       )
     ) {
       const m =
-        /^(?:troko[,\s]+)?(?:nota\s+r[aá]pida|apunta(?:r|me)?(?:\s+una)?\s+nota|guarda(?:r|me)?(?:\s+una)?\s+nota|anota(?:r|me)?\s+nota)[:\s]+(.+)$/i.exec(
+        /^(?:(?:nuko|luma|troko)[,\s]+)?(?:estaciona(?:r|me)?|parking(?:\s+lot)?|para\s+despu[eé]s)[:\s]+(.+)$/i.exec(
+          trimmed
+        );
+      const parkedText = (m?.[1] ?? '').trim();
+      const item = this.focusAssistantService.addParkingItem(parkedText);
+      emotion = 'guino';
+      replyText = `Estacionado en tu Parking Lot: «${item.text}». Seguí enfocado, lo revisamos al terminar el bloque.`;
+      toolAction = { type: 'parking_lot_add', itemId: item.id, text: item.text };
+      this.eventBus.setIslandState({
+        state: 'success',
+        mood: 'guino',
+        statusText: 'Listo',
+        badgeWord: 'Estacionado',
+        peekCard: null,
+      });
+      this.scheduleSuccessReset('Estacionado');
+    }
+    // 1c. Focus Presets ("Modo estudio profundo" / "Modo código" / "Sprint rápido")
+    else if (
+      this.focusAssistantService &&
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:activa(?:r|me)?\s+|inicia(?:r|me)?\s+|pon(?:er|me)?\s+)?(?:modo\s+|perfil\s+)?(estudio\s+profundo|trabajo(?:\s*\/\s*|\s+y\s+|\s+)?c[oó]digo|c[oó]digo|sprint\s+r[aá]pido)(?:\s+(?:para|de|con)\s+(.+))?$/i.test(
+        trimmed
+      )
+    ) {
+      const m =
+        /^(?:(?:nuko|luma|troko)[,\s]+)?(?:activa(?:r|me)?\s+|inicia(?:r|me)?\s+|pon(?:er|me)?\s+)?(?:modo\s+|perfil\s+)?(estudio\s+profundo|trabajo(?:\s*\/\s*|\s+y\s+|\s+)?c[oó]digo|c[oó]digo|sprint\s+r[aá]pido)(?:\s+(?:para|de|con)\s+(.+))?$/i.exec(
+          trimmed
+        );
+      const rawPreset = (m?.[1] ?? '').toLowerCase();
+      const customLabel = (m?.[2] ?? '').trim();
+      const presetId = rawPreset.includes('estudio')
+        ? 'estudio_profundo'
+        : rawPreset.includes('sprint')
+        ? 'sprint_rapido'
+        : 'trabajo_codigo';
+      const started = this.focusAssistantService.startWithPreset(presetId, {
+        label: customLabel || undefined,
+      });
+      emotion = 'animo';
+      replyText = `Perfil «${started.preset.name}» activado (${started.preset.focusMinutes}/${started.preset.breakMinutes} min, escudo activo). ¡A darle!`;
+      toolAction = {
+        type: 'start_focus_preset',
+        presetId,
+        soundId: started.preset.soundId,
+      };
+    }
+    // 1d. Spaced Repetition Due Reviews ("¿Qué tengo para repasar?" / "Repasos pendientes")
+    else if (
+      this.studyService &&
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:¿?\s*qu[eé]\s+tengo\s+(?:para|por)\s+repasar|repasos\s+pendientes|toca\s+repasar)\??$/i.test(
+        trimmed
+      )
+    ) {
+      const due = this.studyService.listDueReviews();
+      emotion = due.length > 0 ? 'animo' : 'orgulloso';
+      if (due.length === 0) {
+        replyText = 'Estás al día con tus repasos espaciados. No tenés bloques vencidos hoy.';
+      } else {
+        const preview = due
+          .slice(0, 3)
+          .map((d) => `«${d.blockTitle}» (${d.docTitle})`)
+          .join(', ');
+        replyText = `Tenés ${due.length} bloque(s) para repasar hoy: ${preview}. Abrí Enfoque → Estudio PDF para sumar XP.`;
+      }
+      toolAction = { type: 'due_study_reviews', count: due.length };
+      this.eventBus.setIslandState({
+        state: 'success',
+        mood: emotion,
+        statusText: 'Listo',
+        badgeWord: `${due.length} repasos`,
+        peekCard: null,
+      });
+      this.scheduleSuccessReset(`${due.length} repasos`);
+    }
+    // 2. Quick Note ("Nota rápida: ..." / "Apunta una nota: ...")
+    else if (
+      this.notesService &&
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:nota\s+r[aá]pida|apunta(?:r|me)?(?:\s+una)?\s+nota|guarda(?:r|me)?(?:\s+una)?\s+nota|anota(?:r|me)?\s+nota)[:\s]+(.+)$/i.test(
+        trimmed
+      )
+    ) {
+      const m =
+        /^(?:(?:nuko|luma|troko)[,\s]+)?(?:nota\s+r[aá]pida|apunta(?:r|me)?(?:\s+una)?\s+nota|guarda(?:r|me)?(?:\s+una)?\s+nota|anota(?:r|me)?\s+nota)[:\s]+(.+)$/i.exec(
           trimmed
         );
       const noteContent = (m?.[1] ?? '').trim();
@@ -705,12 +795,12 @@ export class NluService {
     }
     // 3. Task creation (Spanish + voseo or English)
     else if (
-      /^(?:troko[,\s]+)?(?:anot[aá](?:r|me)?(?:\s+una)?(?:\s+tarea)?|agreg[aá](?:r|me)?(?:\s+una)?\s+tarea|cre[aá](?:r|me)?(?:\s+una)?\s+tarea|nueva\s+tarea|add\s+(?:a\s+)?task|create\s+(?:a\s+)?task)[:\s]+(.+)$/i.test(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:anot[aá](?:r|me)?(?:\s+una)?(?:\s+tarea)?|agreg[aá](?:r|me)?(?:\s+una)?\s+tarea|cre[aá](?:r|me)?(?:\s+una)?\s+tarea|nueva\s+tarea|add\s+(?:a\s+)?task|create\s+(?:a\s+)?task)[:\s]+(.+)$/i.test(
         trimmed
       )
     ) {
       const match =
-        /^(?:troko[,\s]+)?(?:anot[aá](?:r|me)?(?:\s+una)?(?:\s+tarea)?|agreg[aá](?:r|me)?(?:\s+una)?\s+tarea|cre[aá](?:r|me)?(?:\s+una)?\s+tarea|nueva\s+tarea|add\s+(?:a\s+)?task|create\s+(?:a\s+)?task)[:\s]+(.+)$/i.exec(
+        /^(?:(?:nuko|luma|troko)[,\s]+)?(?:anot[aá](?:r|me)?(?:\s+una)?(?:\s+tarea)?|agreg[aá](?:r|me)?(?:\s+una)?\s+tarea|cre[aá](?:r|me)?(?:\s+una)?\s+tarea|nueva\s+tarea|add\s+(?:a\s+)?task|create\s+(?:a\s+)?task)[:\s]+(.+)$/i.exec(
           trimmed
         );
       const taskTitle = (match?.[1] ?? 'Nueva tarea')
@@ -790,12 +880,12 @@ export class NluService {
     }
     // 5. Task completion ("Terminé comprar pan" / "Completa la tarea revisar informe")
     else if (
-      /^(?:troko[,\s]+)?(?:termin[eé](?:\s+de)?|complet[eé]|completa(?:r)?(?:\s+la\s+tarea)?|marca(?:r)?\s+(?:como\s+)?(?:hecha|completada)|ya\s+hice)\s+(.+)$/i.test(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:termin[eé](?:\s+de)?|complet[eé]|completa(?:r)?(?:\s+la\s+tarea)?|marca(?:r)?\s+(?:como\s+)?(?:hecha|completada)|ya\s+hice)\s+(.+)$/i.test(
         trimmed
       )
     ) {
       const m =
-        /^(?:troko[,\s]+)?(?:termin[eé](?:\s+de)?|complet[eé]|completa(?:r)?(?:\s+la\s+tarea)?|marca(?:r)?\s+(?:como\s+)?(?:hecha|completada)|ya\s+hice)\s+(.+)$/i.exec(
+        /^(?:(?:nuko|luma|troko)[,\s]+)?(?:termin[eé](?:\s+de)?|complet[eé]|completa(?:r)?(?:\s+la\s+tarea)?|marca(?:r)?\s+(?:como\s+)?(?:hecha|completada)|ya\s+hice)\s+(.+)$/i.exec(
           trimmed
         );
       const hint = (m?.[1] ?? '').trim().replace(/[.!]+$/, '');
@@ -924,8 +1014,8 @@ export class NluService {
       };
     }
     // 10. App launch ("Abre Notas", "Abrime calculadora" or blocked injection "Abre $(touch ...)")
-    else if (/^(?:troko[,\s]+)?(?:abr[ei](?:me)?|abrir|lanz[aá]|ejecut[aá])\s+(.+)$/i.test(trimmed)) {
-      const m = /^(?:troko[,\s]+)?(?:abr[ei](?:me)?|abrir|lanz[aá]|ejecut[aá])\s+(.+)$/i.exec(trimmed);
+    else if (/^(?:(?:nuko|luma|troko)[,\s]+)?(?:abr[ei](?:me)?|abrir|lanz[aá]|ejecut[aá])\s+(.+)$/i.test(trimmed)) {
+      const m = /^(?:(?:nuko|luma|troko)[,\s]+)?(?:abr[ei](?:me)?|abrir|lanz[aá]|ejecut[aá])\s+(.+)$/i.exec(trimmed);
       const targetApp = (m?.[1] ?? '').trim().replace(/[.!]+$/, '');
       const canonical = this.appLauncherService.resolveWhitelistedApp(targetApp);
       if (canonical) {
@@ -948,7 +1038,7 @@ export class NluService {
     }
     // 11. Weather query ("¿Qué clima hace en Madrid?" / "Decime el clima" / "Clima en Buenos Aires")
     else if (
-      /(?:^(?:troko[,\s]+)?(?:¿?\s*(?:qu[eé]|cu[aá]l|c[oó]mo\s+est[aá])|dime|decime|consulta(?:r)?|ver)\s+(?:el\s+|la\s+)?(?:clima|tiempo|temperatura|pron[oó]stico))|(?:\b(?:clima|pron[oó]stico|temperatura)\s+(?:en|de)\s+)|(?:^(?:troko[,\s]+)?(?:clima|temperatura|pron[oó]stico)(?:\s+en\s+|\s+de\s+|\s*$))/i.test(
+      /(?:^(?:(?:nuko|luma|troko)[,\s]+)?(?:¿?\s*(?:qu[eé]|cu[aá]l|c[oó]mo\s+est[aá])|dime|decime|consulta(?:r)?|ver)\s+(?:el\s+|la\s+)?(?:clima|tiempo|temperatura|pron[oó]stico))|(?:\b(?:clima|pron[oó]stico|temperatura)\s+(?:en|de)\s+)|(?:^(?:(?:nuko|luma|troko)[,\s]+)?(?:clima|temperatura|pron[oó]stico)(?:\s+en\s+|\s+de\s+|\s*$))/i.test(
         trimmed
       )
     ) {
@@ -991,12 +1081,12 @@ export class NluService {
     }
     // 12. Tavily web search ("Busca noticias sobre IA" / "Buscame sobre Node 24")
     else if (
-      /^(?:troko[,\s]+)?(?:busc[aá](?:r|me)?|investiga(?:r)?)(?:\s+(?:en\s+(?:internet|la\s+web)|sobre))?\s+(.+)$/i.test(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:busc[aá](?:r|me)?|investiga(?:r)?)(?:\s+(?:en\s+(?:internet|la\s+web)|sobre))?\s+(.+)$/i.test(
         trimmed
       )
     ) {
       const m =
-        /^(?:troko[,\s]+)?(?:busc[aá](?:r|me)?|investiga(?:r)?)(?:\s+(?:en\s+(?:internet|la\s+web)|sobre))?\s+(.+)$/i.exec(
+        /^(?:(?:nuko|luma|troko)[,\s]+)?(?:busc[aá](?:r|me)?|investiga(?:r)?)(?:\s+(?:en\s+(?:internet|la\s+web)|sobre))?\s+(.+)$/i.exec(
           trimmed
         );
       const query = (m?.[1] ?? '').trim().replace(/[.?!]+$/, '');
@@ -1031,12 +1121,12 @@ export class NluService {
     }
     // 13. Telegram send ("Envía por telegram Hola equipo" / "Mandame por telegram ...")
     else if (
-      /^(?:troko[,\s]+)?(?:env[ií]a(?:r)?|mand[aá](?:r|me)?|escribe)\s+(?:un\s+)?(?:mensaje\s+)?(?:por\s+)?telegram(?:\s+(?:diciendo|que|:))?\s+(.+)$/i.test(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:env[ií]a(?:r)?|mand[aá](?:r|me)?|escribe)\s+(?:un\s+)?(?:mensaje\s+)?(?:por\s+)?telegram(?:\s+(?:diciendo|que|:))?\s+(.+)$/i.test(
         trimmed
       )
     ) {
       const m =
-        /^(?:troko[,\s]+)?(?:env[ií]a(?:r)?|mand[aá](?:r|me)?|escribe)\s+(?:un\s+)?(?:mensaje\s+)?(?:por\s+)?telegram(?:\s+(?:diciendo|que|:))?\s+(.+)$/i.exec(
+        /^(?:(?:nuko|luma|troko)[,\s]+)?(?:env[ií]a(?:r)?|mand[aá](?:r|me)?|escribe)\s+(?:un\s+)?(?:mensaje\s+)?(?:por\s+)?telegram(?:\s+(?:diciendo|que|:))?\s+(.+)$/i.exec(
           trimmed
         );
       const messageText = (m?.[1] ?? '').trim();
@@ -1078,7 +1168,7 @@ export class NluService {
     }
     // 14. Daily Agenda Summary ("¿Qué tengo hoy?" / "Resumen del día" / "Mis pendientes")
     else if (
-      /^(?:troko[,\s]+)?(?:¿?\s*(?:qu[eé]\s+(?:tengo|hay)\s+(?:para\s+)?hoy|cu[aá]les\s+son\s+mis\s+(?:pendientes|tareas|h[aá]bitos)|c[oó]mo\s+van\s+mis\s+h[aá]bitos|agenda\s+de\s+hoy|mis\s+pendientes|resumen\s+del\s+d[ií]a)\s*\??)$/i.test(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:¿?\s*(?:qu[eé]\s+(?:tengo|hay)\s+(?:para\s+)?hoy|cu[aá]les\s+son\s+mis\s+(?:pendientes|tareas|h[aá]bitos)|c[oó]mo\s+van\s+mis\s+h[aá]bitos|agenda\s+de\s+hoy|mis\s+pendientes|resumen\s+del\s+d[ií]a)\s*\??)$/i.test(
         trimmed
       )
     ) {
@@ -1132,7 +1222,7 @@ export class NluService {
     }
     // 15. System Telemetry ("Estado de mi PC" / "Cuánta RAM uso" / "Uso de CPU")
     else if (
-      /^(?:troko[,\s]+)?(?:¿?\s*(?:estado\s+(?:de\s+)?(?:mi\s+)?(?:pc|equipo|computadora|sistema)|uso\s+de\s+(?:cpu|ram|memoria)|cu[aá]nta\s+(?:ram|memoria)\s+(?:uso|hay|tengo)|info(?:rmaci[oó]n)?\s+del\s+sistema)\s*\??)$/i.test(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:¿?\s*(?:estado\s+(?:de\s+)?(?:mi\s+)?(?:pc|equipo|computadora|sistema)|uso\s+de\s+(?:cpu|ram|memoria)|cu[aá]nta\s+(?:ram|memoria)\s+(?:uso|hay|tengo)|info(?:rmaci[oó]n)?\s+del\s+sistema)\s*\??)$/i.test(
         trimmed
       )
     ) {
@@ -1162,7 +1252,7 @@ export class NluService {
     // 16. Habit logging ("Tomé un vaso de agua", "Registra 1 vaso de agua", "Sumá 1 a leer")
     else if (
       this.habitService &&
-      /^(?:troko[,\s]+)?(?:tom[eé]|beb[ií]|hice|cumpl[ií](?:\s+con)?|registra(?:r)?|sum[aá](?:r)?)\s+(.+)$/i.test(
+      /^(?:(?:nuko|luma|troko)[,\s]+)?(?:tom[eé]|beb[ií]|hice|cumpl[ií](?:\s+con)?|registra(?:r)?|sum[aá](?:r)?)\s+(.+)$/i.test(
         trimmed
       ) &&
       this.findMatchingHabit(trimmed) !== null

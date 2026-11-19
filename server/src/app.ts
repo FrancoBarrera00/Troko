@@ -14,6 +14,7 @@ import { registerStudyGuardianRoutes } from './routes/studyGuardian.ts';
 import { AiProviderService } from './services/aiProvider.ts';
 import { AppLauncherService } from './services/appLauncherService.ts';
 import { BridgeService } from './services/bridgeService.ts';
+import { FocusAssistantService } from './services/focusAssistantService.ts';
 import { GuardianService } from './services/guardianService.ts';
 import { HabitService } from './services/habitService.ts';
 import { MailerService } from './services/mailerService.ts';
@@ -207,6 +208,7 @@ export interface ServerContext {
   readonly progressionService: ProgressionService;
   readonly guardianService: GuardianService;
   readonly studyService: StudyService;
+  readonly focusAssistantService: FocusAssistantService;
   readonly version: string;
   readonly startedAtMs: number;
   readonly getLooseDesktopFilesCount: () => Promise<number> | number;
@@ -240,20 +242,41 @@ const MIME_MAP: Record<string, string> = {
 };
 
 function resolveDefaultDbPath(): string {
+  if (process.env['NUKO_DB_PATH']) {
+    return process.env['NUKO_DB_PATH'];
+  }
   if (process.env['TROKO_DB_PATH']) {
     return process.env['TROKO_DB_PATH'];
   }
-  if (process.env['TROKO_DATA_DIR']) {
-    return path.join(process.env['TROKO_DATA_DIR'], 'troko.db');
+  const dataDir = process.env['NUKO_DATA_DIR'] ?? process.env['TROKO_DATA_DIR'];
+  if (dataDir) {
+    const nukoDb = path.join(dataDir, 'nuko.db');
+    const legacyDb = path.join(dataDir, 'troko.db');
+    if (!fs.existsSync(nukoDb) && fs.existsSync(legacyDb)) {
+      try {
+        fs.copyFileSync(legacyDb, nukoDb);
+      } catch {
+        return legacyDb;
+      }
+    }
+    return nukoDb;
   }
   const cwd = process.cwd();
-  if (
+  const baseDir =
     path.basename(cwd) === 'server' &&
     fs.existsSync(path.resolve(cwd, '../package.json'))
-  ) {
-    return path.resolve(cwd, '../data/troko.db');
+      ? path.resolve(cwd, '../data')
+      : path.resolve(cwd, 'data');
+  const nukoDb = path.join(baseDir, 'nuko.db');
+  const legacyDb = path.join(baseDir, 'troko.db');
+  if (!fs.existsSync(nukoDb) && fs.existsSync(legacyDb)) {
+    try {
+      fs.copyFileSync(legacyDb, nukoDb);
+    } catch {
+      return legacyDb;
+    }
   }
-  return path.resolve(cwd, 'data/troko.db');
+  return nukoDb;
 }
 
 function resolveStaticDir(explicit?: string | null): string | null {
@@ -332,6 +355,14 @@ export function createApp(config: AppConfig = {}): TrokoApp {
     aiProvider,
     progressionService
   );
+  const focusAssistantService = new FocusAssistantService({
+    dbPath,
+    db,
+    eventBus,
+    productivityService,
+    guardianService,
+    progressionService,
+  });
 
   productivityService.setFocusHooks({
     onFocusStarted: (phase) => {
@@ -348,8 +379,19 @@ export function createApp(config: AppConfig = {}): TrokoApp {
           clean ? 'Bloque de enfoque limpio (con bonus)' : 'Bloque de enfoque completado',
           { cleanFocusBlock: clean, resetFocusStreak: !clean }
         );
+        focusAssistantService.flushShieldedQueue(true);
       }
     },
+    onFocusStopped: () => {
+      focusAssistantService.flushShieldedQueue(true);
+    },
+    shouldDeferReminder: (reminder) =>
+      focusAssistantService.shouldDeferDuringFocus({
+        id: reminder.id,
+        kind: 'reminder',
+        title: reminder.title,
+        originalAt: reminder.triggerAt,
+      }),
   });
 
   const nluService = new NluService({
@@ -364,6 +406,8 @@ export function createApp(config: AppConfig = {}): TrokoApp {
     appLauncherService,
     aiProvider,
     bridgeService,
+    focusAssistantService,
+    studyService,
   });
   const router = new Router();
 
@@ -384,6 +428,7 @@ export function createApp(config: AppConfig = {}): TrokoApp {
     progressionService,
     guardianService,
     studyService,
+    focusAssistantService,
     version,
     startedAtMs: Date.now(),
     getLooseDesktopFilesCount:

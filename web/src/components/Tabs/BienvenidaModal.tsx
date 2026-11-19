@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react';
-import type { AiDetectResult } from '../../../../shared/types.ts';
+import type { AiDetectResult, CompanionId } from '../../../../shared/types.ts';
 import { apiClient, type OnboardingStateResponse } from '../../api/client.ts';
 import { TrokoAvatar } from '../TrokoAvatar/TrokoAvatar.tsx';
 
 export interface BienvenidaModalProps {
   open: boolean;
+  activeCompanion?: CompanionId;
+  onSelectCompanion?: (companion: CompanionId) => Promise<void>;
   onCompleted: () => void;
 }
 
-export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
+export function BienvenidaModal({
+  open,
+  activeCompanion = 'nuko',
+  onSelectCompanion,
+  onCompleted,
+}: BienvenidaModalProps) {
   const [state, setState] = useState<OnboardingStateResponse>({
     ok: true,
     completed: false,
@@ -110,6 +117,7 @@ export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
   };
 
   const mbDownloaded = (state.downloadedBytes / 1_000_000).toFixed(0);
+  const compName = activeCompanion === 'luma' ? 'Luma' : 'Nuko';
 
   return (
     <div
@@ -129,7 +137,7 @@ export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Bienvenida a Troko"
+        aria-label="Bienvenida a Nuko Desk"
         data-testid="bienvenida-modal"
         style={{
           width: 'min(480px, 94vw)',
@@ -145,7 +153,7 @@ export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <TrokoAvatar size="lg" mood="saludo" state="idle" />
+          <TrokoAvatar size="lg" mood="saludo" state="idle" companion={activeCompanion} />
           <div>
             <span
               style={{
@@ -156,15 +164,65 @@ export function BienvenidaModal({ open, onCompleted }: BienvenidaModalProps) {
                 color: '#B6F23A',
               }}
             >
-              Bienvenida · IA Local en tu equipo
+              Bienvenida · Nuko Desk
             </span>
             <h2 style={{ margin: '4px 0 0', fontSize: '20px', fontWeight: 700 }}>
-              Hola, soy Troko
+              Hola, soy {compName}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#8E8E93' }}>
-              Tu compañero inteligente en la Dynamic Island, 100 % privado y en español.
+              Elegí a tu compañero de enfoque en la Dynamic Island (podés entrenar a ambos y subirlos de nivel por separado).
             </p>
           </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '8px',
+          }}
+        >
+          <button
+            type="button"
+            data-testid="welcome-companion-nuko"
+            className={activeCompanion === 'nuko' ? 'btn-lime' : 'btn-ghost'}
+            onClick={() => void onSelectCompanion?.('nuko')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 10px',
+              borderRadius: '14px',
+              textAlign: 'left',
+            }}
+          >
+            <TrokoAvatar size="sm" mood="contento" state="idle" companion="nuko" />
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700 }}>Nuko</div>
+              <div style={{ fontSize: '10px', opacity: 0.8 }}>Búho guardián</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            data-testid="welcome-companion-luma"
+            className={activeCompanion === 'luma' ? 'btn-lime' : 'btn-ghost'}
+            onClick={() => void onSelectCompanion?.('luma')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 10px',
+              borderRadius: '14px',
+              textAlign: 'left',
+            }}
+          >
+            <TrokoAvatar size="sm" mood="contento" state="idle" companion="luma" />
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700 }}>Luma</div>
+              <div style={{ fontSize: '10px', opacity: 0.8 }}>Luciérnaga foco</div>
+            </div>
+          </button>
         </div>
 
         {ollamaInfo && ollamaInfo.ollamaDetected && ollamaInfo.models.length > 0 && (

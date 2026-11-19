@@ -142,6 +142,8 @@ export class ProductivityService {
   private focusHooks: {
     onFocusStarted?: (phase: FocusPhase) => void;
     onFocusCompleted?: (phase: FocusPhase) => void;
+    onFocusStopped?: () => void;
+    shouldDeferReminder?: (reminder: Reminder) => boolean;
   } = {};
 
   constructor(
@@ -159,6 +161,8 @@ export class ProductivityService {
   setFocusHooks(hooks: {
     onFocusStarted?: (phase: FocusPhase) => void;
     onFocusCompleted?: (phase: FocusPhase) => void;
+    onFocusStopped?: () => void;
+    shouldDeferReminder?: (reminder: Reminder) => boolean;
   }): void {
     this.focusHooks = hooks;
   }
@@ -342,6 +346,14 @@ export class ProductivityService {
       }
 
       if (triggerMs <= nowMs) {
+        if (this.focusHooks.shouldDeferReminder?.(r)) {
+          this.trokoDb.db
+            .prepare("UPDATE reminders SET status = 'missed', fired_at = ? WHERE id = ?")
+            .run(nowIso, r.id);
+          this.eventBus.publish('data.updated', { scope: 'reminders', reminderId: r.id });
+          continue;
+        }
+
         this.trokoDb.db
           .prepare("UPDATE reminders SET status = 'fired', fired_at = ? WHERE id = ?")
           .run(nowIso, r.id);
@@ -934,6 +946,7 @@ export class ProductivityService {
       statusText: 'Reposo',
       peekCard: null,
     });
+    this.focusHooks.onFocusStopped?.();
     this.eventBus.publish('data.updated', { scope: 'focus' });
     return this.getFocusState();
   }

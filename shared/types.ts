@@ -14,7 +14,10 @@ export const ISLAND_STATES = [
 ] as const;
 export type IslandState = (typeof ISLAND_STATES)[number];
 
-export const TROKO_MOODS = [
+export const COMPANION_IDS = ['nuko', 'luma'] as const;
+export type CompanionId = (typeof COMPANION_IDS)[number];
+
+export const NUKO_MOODS = [
   'contento',
   'enamorado',
   'sorpresa',
@@ -28,7 +31,12 @@ export const TROKO_MOODS = [
   'saludo',
   'animo',
 ] as const;
-export type TrokoMood = (typeof TROKO_MOODS)[number];
+export type NukoMood = (typeof NUKO_MOODS)[number];
+
+/** @deprecated Alias kept for transition compatibility */
+export const TROKO_MOODS = NUKO_MOODS;
+/** @deprecated Alias kept for transition compatibility */
+export type TrokoMood = NukoMood;
 
 export const HABIT_SCENE_IDS = [
   'water',
@@ -374,8 +382,8 @@ export interface MemoryExportPayload {
   integrations: IntegrationRecord[];
 }
 
-// === Round 5: Progression / Accessories, Focus Guardian & PDF Study Blocks ===
-export const TROKO_ACCESSORY_IDS = [
+// === Round 5 & 6: Dual-Companion Progression / Accessories, Focus Guardian & PDF Study Blocks ===
+export const NUKO_ACCESSORY_IDS = [
   'none',
   'glasses',
   'headphones',
@@ -383,10 +391,15 @@ export const TROKO_ACCESSORY_IDS = [
   'crown',
   'halo',
 ] as const;
-export type TrokoAccessoryId = (typeof TROKO_ACCESSORY_IDS)[number];
+export type NukoAccessoryId = (typeof NUKO_ACCESSORY_IDS)[number];
+
+/** @deprecated Alias kept for transition compatibility */
+export const TROKO_ACCESSORY_IDS = NUKO_ACCESSORY_IDS;
+/** @deprecated Alias kept for transition compatibility */
+export type TrokoAccessoryId = NukoAccessoryId;
 
 export interface AccessoryCatalogItem {
-  id: TrokoAccessoryId;
+  id: NukoAccessoryId;
   name: string;
   description: string;
   minLevel: number;
@@ -404,9 +417,22 @@ export interface ProgressionState {
   totalFocusCleanBlocks: number;
   totalStudyBlocksMastered: number;
   totalQuizzesCorrect: number;
-  equippedAccessory: TrokoAccessoryId;
-  unlockedAccessories: TrokoAccessoryId[];
+  equippedAccessory: NukoAccessoryId;
+  unlockedAccessories: NukoAccessoryId[];
   lastRewardReason?: string;
+}
+
+export interface CompanionProgressionMap {
+  nuko: ProgressionState;
+  luma: ProgressionState;
+}
+
+export interface ProgressionApiResponse {
+  ok: true;
+  activeCompanion: CompanionId;
+  progression: ProgressionState;
+  companions: CompanionProgressionMap;
+  catalog: AccessoryCatalogItem[];
 }
 
 export type GuardianMode = 'blacklist' | 'whitelist';
@@ -448,6 +474,10 @@ export interface StudyBlock {
   quizQuestions: StudyQuizQuestion[];
   mastered: boolean;
   masteredAt: string | null;
+  reviewStage?: number;
+  nextReviewAt?: string | null;
+  lastReviewedAt?: string | null;
+  reviewCount?: number;
 }
 
 export interface StudyDocument {
@@ -470,4 +500,96 @@ export interface StudyDecodeProgress {
   totalBlocks: number;
   totalPages: number;
 }
+
+// === Round 6: Full Focus Virtual Assistant Suite ===
+export const AMBIENT_SOUND_IDS = ['off', 'brown', 'rain', 'binaural40'] as const;
+export type AmbientSoundId = (typeof AMBIENT_SOUND_IDS)[number];
+
+export const FOCUS_PRESET_IDS = [
+  'estudio_profundo',
+  'trabajo_codigo',
+  'sprint_rapido',
+] as const;
+export type FocusPresetId = (typeof FOCUS_PRESET_IDS)[number];
+
+export interface FocusPreset {
+  id: FocusPresetId;
+  name: string;
+  description: string;
+  focusMinutes: number;
+  breakMinutes: number;
+  guardianMode: GuardianMode;
+  soundId: AmbientSoundId;
+  shieldEnabled: boolean;
+}
+
+export interface FocusIntention {
+  label: string;
+  taskId: string | null;
+  studyDocId: string | null;
+  studyBlockId: string | null;
+  presetId: FocusPresetId | null;
+  setAt: string;
+}
+
+export interface ParkingLotItem {
+  id: string;
+  text: string;
+  createdAt: string;
+  promotedTaskId: string | null;
+}
+
+export interface ShieldedNotification {
+  id: string;
+  kind: 'reminder' | 'habit';
+  title: string;
+  originalAt: string;
+  heldAt: string;
+}
+
+export interface FocusDistractionStat {
+  label: string;
+  count: number;
+  totalSec: number;
+  lastAt: string;
+}
+
+export interface FocusInsights {
+  totalCompletedBlocks: number;
+  totalFocusMinutes: number;
+  cleanBlocksPct: number;
+  bestTimeSlot: 'Mañana' | 'Tarde' | 'Noche' | 'Sin datos';
+  bySlot: {
+    manana: number;
+    tarde: number;
+    noche: number;
+  };
+  topDistractions: FocusDistractionStat[];
+  totalDistractions: number;
+}
+
+export interface FocusAssistantSnapshot {
+  presets: FocusPreset[];
+  activePresetId: FocusPresetId;
+  activeIntention: FocusIntention | null;
+  shieldEnabled: boolean;
+  shieldedQueue: ShieldedNotification[];
+  parkingLot: ParkingLotItem[];
+  recommendedSound: AmbientSoundId;
+  insights: FocusInsights;
+}
+
+export type StudyReviewQuality = 'again' | 'good' | 'easy';
+
+export interface DueStudyReview {
+  docId: string;
+  docTitle: string;
+  blockId: string;
+  blockTitle: string;
+  pageRange: string;
+  reviewStage: number;
+  nextReviewAt: string;
+  questionCount: number;
+}
+
 

@@ -14,15 +14,18 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type {
+  DueStudyReview,
   StudyBlock,
   StudyDecodeProgress,
   StudyDocument,
+  StudyReviewQuality,
 } from '../../../../shared/types.ts';
 import { apiClient } from '../../api/client.ts';
 
 export interface StudyDecoderViewProps {
   studyDocs: StudyDocument[];
   decodeStatus: StudyDecodeProgress | null;
+  dueStudyReviews?: DueStudyReview[];
   onRefreshAll: () => Promise<void>;
   onSwitchToFocus?: () => void;
 }
@@ -48,6 +51,7 @@ function formatSecShort(sec: number): string {
 export function StudyDecoderView({
   studyDocs,
   decodeStatus,
+  dueStudyReviews = [],
   onRefreshAll,
   onSwitchToFocus,
 }: StudyDecoderViewProps) {
@@ -284,11 +288,103 @@ export function StudyDecoderView({
       ? 12
       : 0;
 
+  const handleRecordReview = async (
+    docId: string,
+    blockId: string,
+    quality: StudyReviewQuality
+  ) => {
+    await apiClient.recordStudyReview(docId, blockId, quality);
+    await onRefreshAll();
+  };
+
   return (
     <div
       data-testid="study-section"
       style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
     >
+      {/* Spaced Repetition Due Reviews */}
+      {dueStudyReviews.length > 0 && (
+        <div
+          className="card"
+          data-testid="spaced-repetition-card"
+          style={{
+            display: 'grid',
+            gap: '8px',
+            border: '1px solid rgba(182, 242, 58, 0.32)',
+            background: 'rgba(182, 242, 58, 0.05)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ fontSize: '12.5px', color: 'var(--cream)' }}>
+              Repasos espaciados de hoy ({dueStudyReviews.length})
+            </strong>
+            <span style={{ fontSize: '11px', color: 'var(--lime)' }}>+20 XP c/u</span>
+          </div>
+          {dueStudyReviews.slice(0, 4).map((rev) => (
+            <div
+              key={`${rev.docId}-${rev.blockId}`}
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 9px',
+                borderRadius: '10px',
+                background: 'rgba(0,0,0,0.28)',
+                border: '1px solid var(--line)',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--cream)' }}>
+                  {rev.blockTitle}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                  {rev.docTitle} · {rev.pageRange} · Etapa {rev.reviewStage}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ fontSize: '10.5px', padding: '4px 7px' }}
+                  onClick={() => {
+                    setSelectedDocId(rev.docId);
+                    setSelectedBlockId(rev.blockId);
+                  }}
+                >
+                  Abrir
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ fontSize: '10.5px', padding: '4px 7px', color: '#FF9EA1' }}
+                  onClick={() => void handleRecordReview(rev.docId, rev.blockId, 'again')}
+                >
+                  Otra vez (1d)
+                </button>
+                <button
+                  type="button"
+                  className="btn-lime"
+                  style={{ fontSize: '10.5px', padding: '4px 8px' }}
+                  onClick={() => void handleRecordReview(rev.docId, rev.blockId, 'good')}
+                >
+                  Bien
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ fontSize: '10.5px', padding: '4px 7px', color: '#B6F23A' }}
+                  onClick={() => void handleRecordReview(rev.docId, rev.blockId, 'easy')}
+                >
+                  Fácil (+25)
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Upload / Paste Decoder Card */}
       <form className="card" data-testid="study-uploader" onSubmit={(e) => void handleDecode(e)}>
         <div

@@ -3,10 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { extractText, getDocumentProxy } from 'unpdf';
 import type {
+  DueStudyReview,
   StudyBlock,
   StudyDecodeProgress,
   StudyDocument,
   StudyQuizQuestion,
+  StudyReviewQuality,
 } from '../../../shared/types.ts';
 import { HttpError } from '../app.ts';
 import type { EventBus } from '../eventBus.ts';
@@ -696,9 +698,20 @@ export class StudyService {
     }
 
     const wasMastered = block.mastered;
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
     block.mastered = Boolean(mastered);
-    block.masteredAt = block.mastered ? new Date().toISOString() : null;
-    doc.updatedAt = new Date().toISOString();
+    block.masteredAt = block.mastered ? nowIso : null;
+    if (block.mastered && !block.nextReviewAt) {
+      block.reviewStage = 1;
+      block.reviewCount = block.reviewCount ?? 0;
+      block.lastReviewedAt = nowIso;
+      block.nextReviewAt = new Date(nowMs + 24 * 60 * 60 * 1000).toISOString();
+    } else if (!block.mastered) {
+      block.reviewStage = 0;
+      block.nextReviewAt = null;
+    }
+    doc.updatedAt = nowIso;
     this.saveDocs();
 
     let xpEarned = 0;
@@ -840,6 +853,90 @@ export class StudyService {
       missingConcepts: missingConcepts.slice(0, 4),
       xpEarned,
     };
+  }
+
+  listDueReviews(referenceIso?: string): DueStudyReview[] {
+    const refMs = referenceIso ? Date.parse(referenceIso) : Date.now();
+    const nowMs = Number.isFinite(refMs) ? refMs : Date.now();
+    const due: DueStudyReview[] = [];
+
+    for (const doc of this.docs) {
+      for (const block of doc.blocks) {
+        if (!block.nextReviewAt) continue;
+        const dueMs = Date.parse(block.nextReviewAt);
+        if (Number.isFinite(dueMs) && dueMs <= nowMs) {
+          due.push({
+            docId: doc.id,
+            docTitle: doc.title,
+            blockId: block.id,
+            blockTitle: block.title,
+            pageRange: block.pageRange,
+            reviewStage: block.reviewStage ?? 1,
+            nextReviewAt: block.nextReviewAt,
+            questionCount: block.quizQuestions.length,
+          });
+        }
+      }
+    }
+
+    return due.sort((a, b) => a.nextReviewAt.localeCompare(b.nextReviewAt));
+  }
+
+  recordReview(
+    docId: string,
+    blockId: string,
+    quality: StudyReviewQuality
+  ): {
+    doc: StudyDocument;
+    block: StudyBlock;
+    intervalDays: number;
+    xpEarned: number;
+  } {
+    const doc = this.getDocumentOrThrow(docId);
+    const block = doc.blocks.find((b) => b.id === blockId);
+    if (!block) {
+      throw new HttpError(404, 'Bloque de estudio no encontrado');
+    }
+
+    const INTERVALS = [1, 3, 7, 14];
+    const currentStage = Math.max(0, block.reviewStage ?? 0);
+    let nextStage = currentStage;
+    if (quality === 'again') {
+      nextStage = 1;
+    } else if (quality === 'good') {
+      nextStage = Math.min(INTERVALS.length, currentStage + 1);
+    } else {
+      nextStage = Math.min(INTERVALS.length, currentStage + 2);
+    }
+
+    const intervalDays = INTERVALS[Math.max(0, nextStage - 1)] ?? 1;
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+
+    block.reviewStage = nextStage;
+    block.reviewCount = (block.reviewCount ?? 0) + 1;
+    block.lastReviewedAt = nowIso;
+    block.nextReviewAt = new Date(nowMs + intervalDays * 24 * 60 * 60 * 1000).toISOString();
+    if (!block.mastered && quality !== 'again') {
+      block.mastered = true;
+      block.masteredAt = nowIso;
+    }
+    doc.updatedAt = nowIso;
+    this.saveDocs();
+
+    let xpEarned = 0;
+    if (this.progressionService) {
+      const xpAmount = quality === 'again' ? 10 : quality === 'easy' ? 25 : 20;
+      const award = this.progressionService.awardXp(
+        xpAmount,
+        `Repaso espaciado: ${block.title}`,
+        { quizCorrect: quality !== 'again' }
+      );
+      xpEarned = award.xpAdded;
+    }
+
+    this.eventBus.publish('data.updated', { scope: 'study', docId: doc.id });
+    return { doc, block, intervalDays, xpEarned };
   }
 
   deleteDocument(id: string): void {

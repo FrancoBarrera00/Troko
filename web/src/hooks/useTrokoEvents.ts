@@ -2,8 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   AccessoryCatalogItem,
   AppSettings,
+  CompanionId,
+  CompanionProgressionMap,
+  DueStudyReview,
   EmailDraft,
   EmailMessage,
+  FocusAssistantSnapshot,
   GuardianConfig,
   GuardianRuntimeStatus,
   IntegrationRecord,
@@ -63,12 +67,16 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
   const [integrations, setIntegrations] = useState<IntegrationRecord[]>([]);
   const [launchedApps, setLaunchedApps] = useState<Array<{ app: string; launchedAt: string }>>([]);
   const [onboarding, setOnboarding] = useState<OnboardingStateResponse | null>(null);
+  const [activeCompanion, setActiveCompanion] = useState<CompanionId>('nuko');
+  const [companions, setCompanions] = useState<CompanionProgressionMap | null>(null);
   const [progression, setProgression] = useState<ProgressionState | null>(null);
   const [accessoryCatalog, setAccessoryCatalog] = useState<AccessoryCatalogItem[]>([]);
   const [guardianConfig, setGuardianConfig] = useState<GuardianConfig | null>(null);
   const [guardianRuntime, setGuardianRuntime] = useState<GuardianRuntimeStatus | null>(null);
   const [studyDocs, setStudyDocs] = useState<StudyDocument[]>([]);
   const [studyDecodeStatus, setStudyDecodeStatus] = useState<StudyDecodeProgress | null>(null);
+  const [focusAssistant, setFocusAssistant] = useState<FocusAssistantSnapshot | null>(null);
+  const [dueStudyReviews, setDueStudyReviews] = useState<DueStudyReview[]>([]);
   const [lastFocusTick, setLastFocusTick] = useState<FocusTickSnapshot | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSavedAt, setSettingsSavedAt] = useState<number | null>(null);
@@ -114,6 +122,8 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
       prgRes,
       grdRes,
       stdRes,
+      fasRes,
+      revRes,
     ] = await Promise.allSettled([
       apiClient.getSummary(),
       apiClient.getSettings(),
@@ -132,6 +142,8 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
       apiClient.getProgression(),
       apiClient.getGuardian(),
       apiClient.getStudyDocs(),
+      apiClient.getFocusAssistant(),
+      apiClient.getDueStudyReviews(),
     ]);
 
     if (sumRes.status === 'fulfilled') setSummary(sumRes.value);
@@ -154,6 +166,12 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
     }
     if (onbRes.status === 'fulfilled') setOnboarding(onbRes.value);
     if (prgRes.status === 'fulfilled') {
+      if (prgRes.value.activeCompanion) {
+        setActiveCompanion(prgRes.value.activeCompanion);
+      }
+      if (prgRes.value.companions) {
+        setCompanions(prgRes.value.companions);
+      }
       setProgression(prgRes.value.progression);
       setAccessoryCatalog(prgRes.value.catalog ?? []);
     }
@@ -164,6 +182,12 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
     if (stdRes.status === 'fulfilled') {
       setStudyDocs(stdRes.value.docs ?? []);
       setStudyDecodeStatus(stdRes.value.decodeStatus ?? null);
+    }
+    if (fasRes.status === 'fulfilled') {
+      setFocusAssistant(fasRes.value);
+    }
+    if (revRes.status === 'fulfilled') {
+      setDueStudyReviews(revRes.value.dueReviews ?? []);
     }
   }, []);
 
@@ -317,6 +341,19 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
     [settings]
   );
 
+  const selectCompanion = useCallback(async (companion: CompanionId) => {
+    setActiveCompanion(companion);
+    try {
+      const res = await apiClient.setCompanion(companion);
+      setActiveCompanion(res.activeCompanion);
+      setCompanions(res.companions);
+      setProgression(res.progression);
+      setAccessoryCatalog(res.catalog ?? []);
+    } catch {
+      // ignore transient error
+    }
+  }, []);
+
   return {
     connectionStatus,
     serverIsland,
@@ -335,12 +372,17 @@ export function useTrokoEvents(options: UseTrokoEventsOptions = {}) {
     integrations,
     launchedApps,
     onboarding,
+    activeCompanion,
+    companions,
+    selectCompanion,
     progression,
     accessoryCatalog,
     guardianConfig,
     guardianRuntime,
     studyDocs,
     studyDecodeStatus,
+    focusAssistant,
+    dueStudyReviews,
     lastFocusTick,
     settingsSaving,
     settingsSavedAt,

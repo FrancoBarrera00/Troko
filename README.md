@@ -1,68 +1,58 @@
-# Troko-Desk — Tu compañero de IA en la Dynamic Island
+# Nuko Desk — Tu compañero de enfoque e IA en la Dynamic Island
 
-**Troko-Desk** es un compañero de escritorio local-first en español que vive en una **Dynamic Island / Notch** interactiva en la parte superior central de tu pantalla (`#island`).
+**Nuko Desk** es un asistente virtual de enfoque, estudio y productividad local-first en español (voseo rioplatense) que vive en una **Dynamic Island / Notch** interactiva en la parte superior central de tu pantalla (`#island`).
 
 ## Características principales
 
+- **Compañeros Duales 100% Originales (`Nuko` & `Luma`) con XP Independiente**:
+  - **Nuko (Búho-espíritu nocturno guardián)** y **Luma (Luciérnaga bioluminiscente de foco)** seleccionables en 1 clic desde la bienvenida o desde la pestaña *Enfoque*.
+  - **Progresión de XP y Nivel independiente (Opción A)**: podés entrenar a Nuko y a Luma por separado con tus bloques de enfoque, estudio PDF, quizzes y hábitos; cada uno desbloquea y equipa sus propios **6 accesorios SVG** (`Clásico`, `Lentes de estudio`, `Auriculares chill`, `Vincha Dojo`, `Corona dorada`, `Aura neón`).
+  - **12 emociones faciales** (`contento`, `enamorado`, `sorpresa`, `orgulloso`, `guino`, `bostezo`, `molesto`, `escucha`, `mareado`, `festejo`, `saludo`, `animo`), seguimiento suave del cursor (`--gx`, `--gy`) y parpadeo natural.
 - **Dynamic Island / Notch (`#island`)**:
-  - Píldora compacta en reposo (`188×38 px`), expansión *peek* (`320×48 px`) y panel completo de 2 columnas (`680×560 px`).
   - **11 estados en vivo**: `idle` (Reposo), `listen` (Escuchando), `think` (Pensando), `speak` (Hablando), `alert` (Alerta), `attentive` (Atento), `notification` (Notificación), `sleep` (Dormido), `focus` (Enfoque), `success` (Listo) y `remind` (Recordatorio).
-  - **4 tarjetas Peek accionables**: organizar escritorio (`desktop_tidy`), borrador de correo (`email_draft`), recordatorio de hábito (`habit_remind`) y avisos pendientes al despertar (`missed_reminders`).
-- **Mascota Vectorial `TrokoAvatar`**:
-  - Cuerpo trapezoidal crema con **12 emociones faciales** (`contento`, `enamorado`, `sorpresa`, `orgulloso`, `guino`, `bostezo`, `molesto`, `escucha`, `mareado`, `festejo`, `saludo`, `animo`).
-  - Seguimiento suave del cursor (`--gx`, `--gy`), parpadeo natural cada 3–4 s, miradas periféricas y respeto por `prefers-reduced-motion`.
-- **IA Híbrida Local-First + Voz (STT/TTS)**:
-  - Motor NLU determinístico offline en español e inglés + conector opcional **BYOK** (Ollama, `llama.cpp`, OpenAI-compatible) con *fallback* automático sin conexión.
-  - Reconocimiento de voz con palabra de activación `"Troko"`, transcripción en vivo bajo la isla y síntesis de voz local con interruptor `"Con voz"`.
-- **Productividad, Hábitos y Herramientas Seguras del Sistema**:
-  - **Inicio y Chat**: resumen diario (`¿Qué tengo hoy?`), historial conversacional en SQLite WAL y comandos NLU naturales con soporte voseo:
-    - Tareas y avisos: `"Anotame comprar café"`, `"Terminé comprar café"`, `"Recuérdame en 15 minutos llamar a Juan"`, `"Avísame a las 18:30 revisar deploy"`.
-    - Hábitos y notas rápidas: `"Tomé agua"`, `"Nota rápida: idea para el proyecto"`.
-    - Enfoque, sistema y apps: `"Inicia enfoque"`, `"Estado de mi PC"`, `"Abrime el bloc de notas"` (con alias seguros: `notepad`, `chrome`, `calc`, `explorador`, `spotify`).
-    - Tool-calling estructurado con IA local/BYOK (`create_task`, `create_reminder`, `start_focus`, `create_timer`, `log_habit`).
-  - **Tareas**: lista de tareas, recordatorios únicos/recurrentes y temporizadores con cuenta regresiva en vivo vía SSE.
-  - **Hábitos**: rachas, anillos semanales (`S D L M X J V`) y **15 escenas SVG animadas**.
-  - **Enfoque, Guardián Real y Estudio PDF**:
-    - Temporizador Pomodoro 25/5 con anillo circular SVG, ciclo de 4 bloques y estadísticas de 7 días.
-    - **Guardián Real de Enfoque**: supervisa la ventana activa durante el Pomodoro contra lista negra (`YouTube`, `Twitch`, `Instagram`, etc.) o lista blanca ("Solo estudio") con tiempo de gracia editable, alertas de Troko y racha limpia.
-    - **Estudio PDF & Bloques sin pérdida**: extrae `.pdf` o resúmenes largos en bloques estructurados sin recortar texto, con mapa de ideas clave, audio TTS (`Escuchar bloque`), quiz Active Recall y explicación Feynman.
-    - **Nivel, XP y Accesorios**: cada bloque de enfoque limpio, bloque estudiado, quiz y hábito suma XP, sube de nivel y desbloquea accesorios SVG equipables (`Lentes de estudio`, `Auriculares`, `Vincha Dojo`, `Corona dorada`, `Aura neón`) sobre `TrokoAvatar`.
-  - **Correo**: bandeja IMAP/SMTP opcional y redacción de borradores con confirmación explícita antes de enviar.
-  - **Mi Mac / Mi Equipo**: clasificador de archivos sueltos en 8 categorías con vista previa, confirmación obligatoria y deshacer atómico (`Deshacer`), lanzador con lista blanca, **Monitor del Sistema** (CPU/RAM/actividad) y **Bloc rápido (Apuntes locales)**.
-  - **Ajustes y Modo Compañero Electron**: proveedor IA local (autodetección de Ollama) o BYOK, selector rápido de Escritorio real vs. Sandbox, permisos de micrófono/notificaciones nativas, atajo global (`Alt+Espacio` en Windows/Linux, `Option+Espacio` en macOS), inicio automático con el sistema, sonido Web Audio y bandeja del sistema (`electron/`).
+  - **4 tarjetas Peek accionables**: organizar escritorio (`desktop_tidy`), borrador de correo (`email_draft`), recordatorio de hábito (`habit_remind`) y avisos retenidos/pendientes (`missed_reminders`).
+- **Suite Completa de Asistente Virtual de Enfoque**:
+  - **Perfiles de enfoque en 1 clic + Ritual de Intención**: `Estudio Profundo (25/5 + Solo estudio + Ruido marrón)`, `Trabajo / Código (50/10 + Lista negra + Lluvia suave)` y `Sprint Rápido (15/3 + Gamma 40 Hz)`, vinculando tu tarea o bloque PDF como meta en la Dynamic Island.
+  - **Paisajes sonoros offline (Web Audio API)**: síntesis procedural 100% local de **Ruido marrón**, **Lluvia suave** y **Pulso binaural Gamma 40 Hz** con *fade-in/out* automático al iniciar o pausar el Pomodoro.
+  - **Escudo de Notificaciones**: retiene silenciosamente los recordatorios durante un bloque de enfoque activo y te los entrega agrupados en una sola tarjeta *Peek* al pasar al descanso.
+  - **Parking Lot Mental**: estacioná ideas o pendientes intrusivos en 3 segundos (`"Estaciona ..."` o desde *Enfoque*) sin perder la concentración y convertilos en tareas reales con 1 clic (`→ Tarea`).
+  - **Descansos activos guiados**: micro-rituales de 60 segundos con **Respiración 4-4-4** animada con Nuko o Luma, **Regla 20-20-20** para descansar la vista e hidratación conectada a tus hábitos.
+  - **Guardián Real de Enfoque**: supervisa la ventana activa durante el Pomodoro contra lista negra (`YouTube`, `Twitch`, `Instagram`, etc.) o lista blanca ("Solo estudio") con tiempo de gracia editable y racha limpia.
+  - **Estudio PDF sin pérdida + Repaso Espaciado**: extrae `.pdf` o apuntes largos en bloques estructurados con ideas clave, lectura TTS, quiz Active Recall, evaluación Feynman y **Repaso Espaciado automático** (`1, 3, 7 y 14 días`).
+  - **Radiografía de Enfoque**: calcula tu **mejor franja horaria** (`Mañana`, `Tarde`, `Noche`), porcentaje de bloques limpios, minutos acumulados y top de distracciones detectadas.
+- **IA Híbrida Local-First + Voz Dual (`"Nuko"` / `"Luma"`)**:
+  - Motor NLU determinístico offline en español + conector opcional **BYOK** (autodetección de Ollama, `llama.cpp`, OpenAI-compatible) con *fallback* automático sin conexión.
+  - Reconocimiento de voz con palabras de activación `"Nuko"` y `"Luma"`, transcripción en vivo y síntesis de voz local.
+- **Productividad, Hábitos, Correo y Herramientas del Sistema**:
+  - **Tareas, Recordatorios y Temporizadores** persistidos en SQLite WAL (15 tablas) con cuenta regresiva vía SSE.
+  - **Hábitos** con rachas, anillos semanales (`S D L M X J V`) y **15 escenas SVG animadas** protagonizadas por Nuko o Luma.
+  - **Correo IMAP/SMTP** con borradores y confirmación obligatoria antes de enviar.
+  - **Mi Equipo**: organizador de escritorio en 8 categorías con vista previa y deshacer atómico (`Deshacer`), lanzador seguro, monitor de CPU/RAM y bloc de notas rápidas.
 
 ---
 
-## Cómo ejecutarlo en tu computadora
+## Cómo actualizar y abrirlo en tu PC
 
 ### Requisitos
 - **Node.js 24+** (usa el módulo nativo `node:sqlite`)
 
-### 1. Instalar dependencias
-```bash
-git clone https://github.com/FrancoBarrera00/Troko.git
-cd Troko
-npm install
-```
-
-### 2. Iniciar en modo desarrollo o Escritorio flotante (Electron)
-En Windows PowerShell:
+### En Windows PowerShell (Modo Escritorio Flotante Electron o Web)
 ```powershell
 git pull origin main
 npm.cmd install
-npm.cmd run build
 npm.cmd run electron:build
 npm.cmd run electron:start
 ```
-O solo en navegador web (`http://127.0.0.1:4173`):
-```bash
-npm run build
-PORT=4173 NODE_ENV=production node server/dist/index.js
-```
-Atajo global en modo Electron: **`Alt + Espacio`** (`Option + Espacio` en macOS) para mostrar/ocultar la isla al instante.
+Atajo global en modo Electron: **`Alt + Espacio`** (`Option + Espacio` en macOS) para mostrar/ocultar la Dynamic Island al instante.
 
-### 3. Pruebas
+O para abrirlo directamente en tu navegador web (`http://127.0.0.1:4173`):
+```powershell
+npm.cmd run build
+$env:PORT=4173; $env:NODE_ENV="production"; node server/dist/index.js
+```
+
+### Pruebas
 ```bash
-npm test                  # Pruebas unitarias SQLite, servicios y Electron
-npm run typecheck         # Verificación estricta de TypeScript
+npm test                  # 51 pruebas unitarias e integración (SQLite, Enfoque, Nuko & Luma)
+npm run typecheck         # Verificación estricta de TypeScript en server, web y electron
 ```

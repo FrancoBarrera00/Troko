@@ -1,4 +1,6 @@
-import type { HabitSceneId } from '../../../../shared/types.ts';
+import { useContext } from 'react';
+import type { CompanionId, HabitSceneId } from '../../../../shared/types.ts';
+import { NukoCompanionContext } from './TrokoAvatar.tsx';
 
 export const HABIT_SCENE_META: Record<
   HabitSceneId,
@@ -21,20 +23,31 @@ export const HABIT_SCENE_META: Record<
   breathe: { label: 'Respiración', defaultGoal: 5, defaultUnit: 'min' },
 };
 
-const MINI_BODY =
-  'M18 8H42Q48 8 50 14L57 34Q60 44 50 44H10Q0 44 3 34L10 14Q12 8 18 8Z';
+const MINI_NUKO_HOOD =
+  'M19 10Q12 4 8 6Q6 10 8 15C4 20 3 29 5 36C7 42 15 45 30 45C45 45 53 42 55 36C57 29 56 20 52 15Q54 10 52 6Q48 4 41 10C37 8.5 33 8 30 8C27 8 23 8.5 19 10Z';
+const MINI_NUKO_DISC =
+  'M30 15C25 11.5 16 11.5 11.5 16C7 20.5 7 31 12.5 37C17 41 23 42.5 30 42.5C37 42.5 43 41 47.5 37C53 31 53 20.5 48.5 16C44 11.5 35 11.5 30 15Z';
+const MINI_LUMA_BODY =
+  'M30 9C17 9 8 18 8 30C8 40 16 45 30 45C44 45 52 40 52 30C52 18 43 9 30 9Z';
 
 export function HabitSceneSvg({
   sceneId,
   size = 56,
+  companion,
 }: {
   sceneId: HabitSceneId;
   size?: number;
+  companion?: CompanionId;
 }) {
+  const ctxCompanion = useContext(NukoCompanionContext);
+  const activeCompanion: CompanionId = companion ?? ctxCompanion ?? 'nuko';
+  const isNuko = activeCompanion === 'nuko';
+
   return (
     <span
       className="habit-scene-wrap"
       data-scene={sceneId}
+      data-companion={activeCompanion}
       style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
     >
       <svg
@@ -44,12 +57,25 @@ export function HabitSceneSvg({
         data-scene={sceneId}
         aria-label={HABIT_SCENE_META[sceneId]?.label ?? sceneId}
       >
-        {/* Base Troko mini character */}
-        <path d={MINI_BODY} fill="#F2EBD9" stroke="rgba(20,20,20,0.18)" strokeWidth="1" />
-        <circle cx="23" cy="26" r="4" fill="#141414" />
-        <circle cx="37" cy="26" r="4" fill="#141414" />
+        {/* Base Nuko or Luma mini companion */}
+        {isNuko ? (
+          <>
+            <path d={MINI_NUKO_HOOD} fill="#2B2444" stroke="#8B5CF6" strokeWidth="1.3" />
+            <path d={MINI_NUKO_DISC} fill="#F6F1E3" />
+            <path d="M30 28L32.4 30.2L30 32.5L27.6 30.2Z" fill="#F5A623" />
+          </>
+        ) : (
+          <>
+            <path d="M22 10L16 3M38 10L44 3" stroke="#8E8E93" strokeWidth="1.6" strokeLinecap="round" />
+            <circle cx="16" cy="3" r="2.3" fill="#B6F23A" />
+            <circle cx="44" cy="3" r="2.3" fill="#B6F23A" />
+            <path d={MINI_LUMA_BODY} fill="#FAF6EA" stroke="#B6F23A" strokeWidth="1.3" />
+          </>
+        )}
+        <circle cx="22" cy="26" r="3.8" fill="#141414" />
+        <circle cx="38" cy="26" r="3.8" fill="#141414" />
         <path
-          d="M26 35Q30 38 34 35"
+          d="M26 35.5Q30 38.5 34 35.5"
           fill="none"
           stroke="#141414"
           strokeWidth="2"
@@ -70,7 +96,7 @@ export function HabitSceneSvg({
               d="M54 20Q63 17 66 22Q69 17 78 20V42Q69 39 66 44Q63 39 54 42Z"
               fill="#8B5CF6"
             />
-            <line x1="66" y1="22" x2="66" y2="44" stroke="#F2EBD9" strokeWidth="1.6" />
+            <line x1="66" y1="22" x2="66" y2="44" stroke="#F6F1E3" strokeWidth="1.6" />
           </g>
         )}
 
@@ -109,7 +135,7 @@ export function HabitSceneSvg({
         {sceneId === 'sleep' && (
           <g data-prop="night-cap">
             <path d="M18 9L34 1L44 10Z" fill="#8B5CF6" />
-            <circle cx="35" cy="2" r="2.8" fill="#F2EBD9" />
+            <circle cx="35" cy="2" r="2.8" fill="#F6F1E3" />
             <path d="M64 12A8 8 0 1 0 74 24A6 6 0 1 1 64 12Z" fill="#F5A623" />
           </g>
         )}
@@ -138,7 +164,7 @@ export function HabitSceneSvg({
 
         {sceneId === 'journal' && (
           <g data-prop="notebook-pen">
-            <rect x="56" y="16" width="18" height="26" rx="2" fill="#F2EBD9" stroke="#8E8E93" strokeWidth="1.4" />
+            <rect x="56" y="16" width="18" height="26" rx="2" fill="#F6F1E3" stroke="#8E8E93" strokeWidth="1.4" />
             <line x1="60" y1="23" x2="70" y2="23" stroke="#141414" strokeWidth="1.5" />
             <line x1="60" y1="29" x2="70" y2="29" stroke="#141414" strokeWidth="1.5" />
             <path d="M52 38L64 14" stroke="#F5A623" strokeWidth="2.6" strokeLinecap="round" />

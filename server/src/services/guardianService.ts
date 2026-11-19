@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type {
+  FocusDistractionStat,
   GuardianConfig,
   GuardianRuntimeStatus,
 } from '../../../shared/types.ts';
@@ -28,8 +29,14 @@ const DEFAULT_ALLOWED = [
   'obsidian',
   'estudio',
   'code',
+  'nuko',
+  'luma',
   'troko',
 ];
+
+interface GuardianPersistedState extends GuardianConfig {
+  distractionHistory?: Record<string, FocusDistractionStat>;
+}
 
 function resolveStorePath(dbPath?: string): string | null {
   if (!dbPath || dbPath === ':memory:') return null;
@@ -51,6 +58,7 @@ export class GuardianService {
   private readonly eventBus: EventBus;
   private readonly progressionService?: ProgressionService;
   private config: GuardianConfig;
+  private distractionHistory: Record<string, FocusDistractionStat> = {};
   private runtime: GuardianRuntimeStatus = {
     sessionDistractions: 0,
     lastDetectedTitle: null,
@@ -75,10 +83,16 @@ export class GuardianService {
 
   private loadConfig(): GuardianConfig {
     if (!this.filePath || !fs.existsSync(this.filePath)) {
+      this.distractionHistory = {};
       return defaultConfig();
     }
     try {
-      const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf8')) as Partial<GuardianConfig>;
+      const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf8')) as Partial<GuardianPersistedState>;
+      if (raw.distractionHistory && typeof raw.distractionHistory === 'object') {
+        this.distractionHistory = { ...raw.distractionHistory };
+      } else {
+        this.distractionHistory = {};
+      }
       return {
         enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
         mode: raw.mode === 'whitelist' ? 'whitelist' : 'blacklist',
@@ -94,6 +108,7 @@ export class GuardianService {
             : 12,
       };
     } catch {
+      this.distractionHistory = {};
       return defaultConfig();
     }
   }
@@ -102,10 +117,39 @@ export class GuardianService {
     if (!this.filePath) return;
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-      fs.writeFileSync(this.filePath, JSON.stringify(this.config, null, 2), 'utf8');
+      const payload: GuardianPersistedState = {
+        ...this.config,
+        distractionHistory: this.distractionHistory,
+      };
+      fs.writeFileSync(this.filePath, JSON.stringify(payload, null, 2), 'utf8');
     } catch {
       // Ignore write failures
     }
+  }
+
+  private recordDistractionStat(label: string, sec: number): void {
+    const clean = (label || 'Distracción').trim().slice(0, 80);
+    const key = clean.toLowerCase();
+    const existing = this.distractionHistory[key];
+    const nowIso = new Date().toISOString();
+    this.distractionHistory[key] = {
+      label: existing?.label ?? clean,
+      count: (existing?.count ?? 0) + 1,
+      totalSec: (existing?.totalSec ?? 0) + Math.max(1, Math.round(sec)),
+      lastAt: nowIso,
+    };
+    this.saveConfig();
+  }
+
+  getTopDistractions(limit = 5): FocusDistractionStat[] {
+    return Object.values(this.distractionHistory)
+      .sort((a, b) => b.count - a.count || b.totalSec - a.totalSec)
+      .slice(0, Math.max(1, limit))
+      .map((item) => ({ ...item }));
+  }
+
+  getTotalDistractions(): number {
+    return Object.values(this.distractionHistory).reduce((acc, item) => acc + item.count, 0);
   }
 
   getConfig(): GuardianConfig {
@@ -168,7 +212,7 @@ export class GuardianService {
 
   isTitleDistracting(rawTitle: string): { distracting: boolean; matchedKeyword: string | null } {
     const title = rawTitle.trim().toLowerCase();
-    if (!title || title.includes('troko')) {
+    if (!title || title.includes('nuko') || title.includes('luma') || title.includes('troko')) {
       return { distracting: false, matchedKeyword: null };
     }
 
@@ -260,6 +304,7 @@ export class GuardianService {
     this.lastAlertAtMs = nowMs;
     this.runtime.sessionDistractions += 1;
     this.runtime.lastAlertAt = new Date(nowMs).toISOString();
+    this.recordDistractionStat(title || check.matchedKeyword || 'Distracción', elapsedSec);
     this.progressionService?.breakFocusStreak();
 
     const targetLabel = input.focusLabel ? `«${input.focusLabel}»` : 'tu bloque de estudio';
@@ -293,6 +338,7 @@ export class GuardianService {
     this.runtime.isCurrentlyDistracted = true;
     this.runtime.distractedSeconds = this.config.graceSec;
     this.runtime.lastAlertAt = new Date().toISOString();
+    this.recordDistractionStat(sampleTitle, this.config.graceSec);
 
     const message = `¡Guardián de Enfoque! Detecté «${sampleTitle}» mientras estabas en «${focusLabel}». Volvamos para mantener tu combo XP.`;
     this.eventBus.setIslandState({
@@ -313,6 +359,7 @@ export class GuardianService {
 
   wipe(): void {
     this.config = defaultConfig();
+    this.distractionHistory = {};
     this.resetSession();
     this.runtime.lastDetectedTitle = null;
     this.saveConfig();

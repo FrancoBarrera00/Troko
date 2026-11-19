@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  AmbientSoundId,
   IslandState,
   IslandStatusPayload,
   PeekCard,
@@ -10,7 +11,12 @@ import { apiClient } from './api/client.ts';
 import { DesktopStage } from './components/DesktopStage/DesktopStage.tsx';
 import { IslandBar } from './components/Island/IslandBar.tsx';
 import { BienvenidaModal } from './components/Tabs/BienvenidaModal.tsx';
-import { TrokoAccessoryContext, TrokoAvatar } from './components/TrokoAvatar/TrokoAvatar.tsx';
+import {
+  NukoCompanionContext,
+  TrokoAccessoryContext,
+  TrokoAvatar,
+} from './components/TrokoAvatar/TrokoAvatar.tsx';
+import { useAmbientAudio } from './hooks/useAmbientAudio.ts';
 import { useGazeTracking } from './hooks/useGazeTracking.ts';
 import { useTrokoEvents } from './hooks/useTrokoEvents.ts';
 import { useVoiceAudio } from './hooks/useVoiceAudio.ts';
@@ -81,12 +87,17 @@ export function App() {
     integrations,
     launchedApps,
     onboarding,
+    activeCompanion,
+    companions,
+    selectCompanion,
     progression,
     accessoryCatalog,
     guardianConfig,
     guardianRuntime,
     studyDocs,
     studyDecodeStatus,
+    focusAssistant,
+    dueStudyReviews,
     lastFocusTick,
     settingsSaving,
     settingsSavedAt,
@@ -99,6 +110,11 @@ export function App() {
       playChimeRef.current('remind');
       window.trokoElectron?.notify?.('Troko-Desk', text);
     },
+  });
+
+  const ambientAudio = useAmbientAudio({
+    isFocusRunning: focusState?.status === 'active' && focusState?.phase === 'focus',
+    soundEnabled: settings?.soundEnabled ?? true,
   });
 
   const [isOpen, setIsOpen] = useState(false);
@@ -194,6 +210,11 @@ export function App() {
         setActiveAppWindow(String(res.toolAction.app));
       } else if (res.toolAction?.type === 'email_draft' && isOpen) {
         setActiveTab('correo');
+      } else if (
+        res.toolAction?.type === 'start_focus_preset' &&
+        typeof res.toolAction.soundId === 'string'
+      ) {
+        ambientAudio.setSoundId(res.toolAction.soundId as AmbientSoundId);
       }
 
       await refreshAll();
@@ -599,146 +620,164 @@ export function App() {
     };
   }, [isElectron, showOnboarding]);
 
+  const companionDisplayName = activeCompanion === 'luma' ? 'Luma' : 'Nuko';
+
   return (
-    <TrokoAccessoryContext.Provider value={progression?.equippedAccessory ?? 'none'}>
-      {!isExited && (
-        <IslandBar
-          status={effectiveStatus}
-          isOpen={isOpen}
-          isPinned={isPinned}
-          isPeeking={isPeeking}
-          activeTab={activeTab}
-          enfoqueSubTab={enfoqueSubTab}
-          summary={summary}
-          settings={settings}
-          settingsSaving={settingsSaving}
-          settingsSavedAt={settingsSavedAt}
-          settingsError={settingsError}
-          tasks={tasks}
-          reminders={reminders}
-          timers={timers}
-          habits={habits}
-          focusState={focusState}
-          chatMessages={chatMessages}
-          inboxMessages={inboxMessages}
-          emailDrafts={emailDrafts}
-          desktopScan={desktopScan}
-          integrations={integrations}
-          launchedApps={launchedApps}
-          progression={progression}
-          accessoryCatalog={accessoryCatalog}
-          guardianConfig={guardianConfig}
-          guardianRuntime={guardianRuntime}
-          studyDocs={studyDocs}
-          studyDecodeStatus={studyDecodeStatus}
-          registerHead={registerHead}
-          onTriggerClick={handleTriggerClick}
-          onHoverOpen={handleHoverOpen}
-          onHoverClose={handleHoverClose}
-          onClose={handleClose}
-          onSelectTab={setActiveTab}
-          onSelectEnfoqueSubTab={setEnfoqueSubTab}
-          onUpdateSettings={updateSettings}
-          onQuickListen={handleQuickListen}
-          onQuitTroko={handleQuitTroko}
-          onPeekAction={(action, card) => {
-            void handlePeekAction(action, card);
-          }}
-          onSendCommand={handleSendCommand}
-          onRefreshAll={refreshAll}
-          onOpenAppWindow={(app) => setActiveAppWindow(app)}
-        />
-      )}
+    <NukoCompanionContext.Provider value={activeCompanion}>
+      <TrokoAccessoryContext.Provider value={progression?.equippedAccessory ?? 'none'}>
+        {!isExited && (
+          <IslandBar
+            status={effectiveStatus}
+            isOpen={isOpen}
+            isPinned={isPinned}
+            isPeeking={isPeeking}
+            activeTab={activeTab}
+            enfoqueSubTab={enfoqueSubTab}
+            summary={summary}
+            settings={settings}
+            settingsSaving={settingsSaving}
+            settingsSavedAt={settingsSavedAt}
+            settingsError={settingsError}
+            tasks={tasks}
+            reminders={reminders}
+            timers={timers}
+            habits={habits}
+            focusState={focusState}
+            chatMessages={chatMessages}
+            inboxMessages={inboxMessages}
+            emailDrafts={emailDrafts}
+            desktopScan={desktopScan}
+            integrations={integrations}
+            launchedApps={launchedApps}
+            activeCompanion={activeCompanion}
+            companions={companions}
+            onSelectCompanion={selectCompanion}
+            progression={progression}
+            accessoryCatalog={accessoryCatalog}
+            guardianConfig={guardianConfig}
+            guardianRuntime={guardianRuntime}
+            studyDocs={studyDocs}
+            studyDecodeStatus={studyDecodeStatus}
+            focusAssistant={focusAssistant}
+            dueStudyReviews={dueStudyReviews}
+            ambientSoundId={ambientAudio.soundId}
+            ambientVolume={ambientAudio.volume}
+            ambientIsPlaying={ambientAudio.isPlaying}
+            ambientAutoSync={ambientAudio.autoSyncFocus}
+            onChangeAmbientSound={ambientAudio.setSoundId}
+            onChangeAmbientVolume={ambientAudio.setVolume}
+            onToggleAmbientAutoSync={ambientAudio.setAutoSyncFocus}
+            registerHead={registerHead}
+            onTriggerClick={handleTriggerClick}
+            onHoverOpen={handleHoverOpen}
+            onHoverClose={handleHoverClose}
+            onClose={handleClose}
+            onSelectTab={setActiveTab}
+            onSelectEnfoqueSubTab={setEnfoqueSubTab}
+            onUpdateSettings={updateSettings}
+            onQuickListen={handleQuickListen}
+            onQuitTroko={handleQuitTroko}
+            onPeekAction={(action, card) => {
+              void handlePeekAction(action, card);
+            }}
+            onSendCommand={handleSendCommand}
+            onRefreshAll={refreshAll}
+            onOpenAppWindow={(app) => setActiveAppWindow(app)}
+          />
+        )}
 
-      {activeAppWindow && (
-        <div
-          className="card"
-          data-testid="launched-app-window"
-          data-ignore-outside-close="true"
-          role="dialog"
-          aria-label={`Ventana de ${activeAppWindow}`}
-          style={{
-            position: 'fixed',
-            bottom: '28px',
-            left: '28px',
-            zIndex: 90,
-            width: '300px',
-            background: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: '18px',
-            padding: '14px',
-            boxShadow: '0 20px 48px rgba(0,0,0,0.65)',
-            display: 'grid',
-            gap: '10px',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: '14px', color: 'var(--cream)' }}>
-              {activeAppWindow}
-            </strong>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => setActiveAppWindow(null)}
-            >
-              Cerrar
-            </button>
-          </div>
-          <p className="sub" style={{ margin: 0, fontSize: '12px' }}>
-            Aplicación abierta desde el lanzador seguro de Troko-Desk.
-          </p>
-        </div>
-      )}
-
-      {!isElectron && (
-        <DesktopStage
-          connectionStatus={connectionStatus}
-          currentState={effectiveStatus.state}
-          currentMood={effectiveStatus.mood}
-          currentPeekKind={effectiveStatus.peekCard?.kind ?? null}
-          showNotchHint={showNotchHint && !isOpen}
-          onSelectState={handleSelectState}
-          onSelectMood={handleSelectMood}
-          onSelectPeek={handleSelectPeek}
-          onResetPreview={handleResetPreview}
-        />
-      )}
-
-      <BienvenidaModal
-        open={showOnboarding}
-        onCompleted={() => {
-          void refreshAll();
-        }}
-      />
-
-      {isExited && (
-        <div
-          className="exit-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Troko en reposo"
-          data-testid="exit-overlay"
-        >
-          <div className="exit-card">
-            <TrokoAvatar size="xl" mood="bostezo" state="sleep" />
-            <h2 className="vt" style={{ fontSize: '21px' }}>
-              Hasta pronto · Troko cerrado (Dormido)
-            </h2>
-            <p className="sub">
-              Tus datos permanecen guardados de forma local y segura en SQLite.
+        {activeAppWindow && (
+          <div
+            className="card"
+            data-testid="launched-app-window"
+            data-ignore-outside-close="true"
+            role="dialog"
+            aria-label={`Ventana de ${activeAppWindow}`}
+            style={{
+              position: 'fixed',
+              bottom: '28px',
+              left: '28px',
+              zIndex: 90,
+              width: '300px',
+              background: 'var(--panel)',
+              border: '1px solid var(--line)',
+              borderRadius: '18px',
+              padding: '14px',
+              boxShadow: '0 20px 48px rgba(0,0,0,0.65)',
+              display: 'grid',
+              gap: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong style={{ fontSize: '14px', color: 'var(--cream)' }}>
+                {activeAppWindow}
+              </strong>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setActiveAppWindow(null)}
+              >
+                Cerrar
+              </button>
+            </div>
+            <p className="sub" style={{ margin: 0, fontSize: '12px' }}>
+              Aplicación abierta desde el lanzador seguro de Nuko Desk.
             </p>
-            <button
-              type="button"
-              className="btn-lime"
-              data-testid="reopen-troko-btn"
-              onClick={() => setIsExited(false)}
-            >
-              Volver a abrir Troko
-            </button>
           </div>
-        </div>
-      )}
-    </TrokoAccessoryContext.Provider>
+        )}
+
+        {!isElectron && (
+          <DesktopStage
+            connectionStatus={connectionStatus}
+            currentState={effectiveStatus.state}
+            currentMood={effectiveStatus.mood}
+            currentPeekKind={effectiveStatus.peekCard?.kind ?? null}
+            showNotchHint={showNotchHint && !isOpen}
+            onSelectState={handleSelectState}
+            onSelectMood={handleSelectMood}
+            onSelectPeek={handleSelectPeek}
+            onResetPreview={handleResetPreview}
+          />
+        )}
+
+        <BienvenidaModal
+          open={showOnboarding}
+          activeCompanion={activeCompanion}
+          onSelectCompanion={selectCompanion}
+          onCompleted={() => {
+            void refreshAll();
+          }}
+        />
+
+        {isExited && (
+          <div
+            className="exit-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${companionDisplayName} en reposo`}
+            data-testid="exit-overlay"
+          >
+            <div className="exit-card">
+              <TrokoAvatar size="xl" mood="bostezo" state="sleep" />
+              <h2 className="vt" style={{ fontSize: '21px' }}>
+                Hasta pronto · {companionDisplayName} cerrado (Dormido)
+              </h2>
+              <p className="sub">
+                Tus datos permanecen guardados de forma local y segura en SQLite.
+              </p>
+              <button
+                type="button"
+                className="btn-lime"
+                data-testid="reopen-troko-btn"
+                onClick={() => setIsExited(false)}
+              >
+                Volver a abrir {companionDisplayName}
+              </button>
+            </div>
+          </div>
+        )}
+      </TrokoAccessoryContext.Provider>
+    </NukoCompanionContext.Provider>
   );
 }
 
